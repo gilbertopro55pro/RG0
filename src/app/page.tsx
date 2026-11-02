@@ -15,6 +15,7 @@ import { albumQuickGalleriesFrom } from "@/lib/albumQuickGalleries";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { closingRecognitions, monthKeyIsrael } from "@/lib/closeEvent";
+import { revenueEntries } from "@/lib/paymentLog";
 import { openAmount } from "@/lib/openBalances";
 import { timeOfDayGreeting } from "@/lib/greeting";
 import { STAGE_LABELS, packageLabel } from "@/lib/stages";
@@ -419,23 +420,13 @@ export default async function DashboardPage() {
   let heroData: { monthLabel: string; monthTotal: number; monthForecast: number } | null = null;
   if (photographer) {
     const revenueByMonth = new Map<string, number>();
-    // A partial payment (deposit_paid/balance_paid still false, *_paid_amount set) counts only the
-    // amount actually received as realized revenue for the month it was recorded in — not the full
-    // original amount, which would overstate revenue for anyone paying in installments.
-    (payments ?? []).forEach((p) => {
-      if (p.deposit_paid_at) {
-        const d = new Date(p.deposit_paid_at);
-        const key = `${d.getFullYear()}-${d.getMonth()}`;
-        const received = p.deposit_paid ? Number(p.deposit_amount) : Number(p.deposit_paid_amount ?? 0);
-        revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + received);
-      }
-      if (p.balance_paid_at) {
-        const d = new Date(p.balance_paid_at);
-        const key = `${d.getFullYear()}-${d.getMonth()}`;
-        const received = p.balance_paid ? Number(p.balance_amount) : Number(p.balance_paid_amount ?? 0);
-        revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + received);
-      }
-    });
+    // Each payment counts in the month it came in: a partial payment in its month, the completion of
+    // it in the completion's month (lib/paymentLog.ts).
+    for (const r of revenueEntries(payments ?? [])) {
+      const d = new Date(r.at);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + r.amount);
+    }
 
     const now = new Date();
     const currentKey = `${now.getFullYear()}-${now.getMonth()}`;

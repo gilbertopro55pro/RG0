@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { amountToDocument } from "@/lib/paymentDocuments";
-import { fullPaymentPatch, legDocState, partialPaymentPatch, unpaidPatch } from "@/lib/eventQuickActions";
+import { fullPaymentPatch, legDocState, partialPaymentPatch } from "@/lib/eventQuickActions";
+import { legPayments, undoPaymentPatch, type PaymentLogEntry } from "@/lib/paymentLog";
 import ReceiptFlow from "@/components/ReceiptFlow";
 import Link from "next/link";
 import MagnetApprovalChip from "@/components/magnetFrame/MagnetApprovalChip";
@@ -746,7 +747,14 @@ export default function EventDetailView({
 
   const applyPaymentPatch = async (field: "deposit" | "balance", patch: Record<string, unknown>) => {
     if (!payments) return;
-    const { error: updateError } = await supabase.from("event_payments").update(patch).eq("event_id", event.id);
+    // The row comes back with the list of payments the trigger keeps (lib/paymentLog.ts), so the
+    // completion button and "ביטול ההשלמה" see the payment just marked.
+    const { data: saved, error: updateError } = await supabase
+      .from("event_payments")
+      .update(patch)
+      .eq("event_id", event.id)
+      .select()
+      .maybeSingle<EventPaymentRow>();
     if (updateError) {
       // Shown inline right next to the action panel (see depositPaymentError/balancePaymentError
       // above) — the page-level banner near the top is easy to miss from all the way down here.
@@ -754,7 +762,7 @@ export default function EventDetailView({
       return;
     }
     setPaymentFieldError(field, null);
-    setPayments({ ...payments, ...patch } as typeof payments);
+    setPayments({ ...payments, ...patch, ...(saved ?? {}) } as typeof payments);
     if (field === "deposit") {
       setDepositActionOpen(false);
       setDepositPartialOpen(false);
@@ -772,7 +780,11 @@ export default function EventDetailView({
 
   const markPaymentFull = (field: "deposit" | "balance") => applyPaymentPatch(field, fullPaymentPatch(field, new Date().toISOString()));
 
-  const markPaymentUnpaid = (field: "deposit" | "balance") => applyPaymentPatch(field, unpaidPatch(field));
+  // Undoing a completion goes back to the partial payment as it was; anything else back to unpaid.
+  const markPaymentUnpaid = (field: "deposit" | "balance") => {
+    if (!payments) return;
+    return applyPaymentPatch(field, undoPaymentPatch(field, !!payments[`${field}_paid`], legPayments(payments, field)));
+  };
 
   // A partial amount that reaches (or somehow exceeds) the full declared amount is just the full
   // payment — snapping to markPaymentFull instead avoids a nonsensical negative/zero "balance
@@ -1212,6 +1224,7 @@ export default function EventDetailView({
               onPartialDraftChange={setDepositPartialDraft}
               onConfirmPartial={() => confirmPartialPayment("deposit", Number(depositPartialDraft))}
               onMarkFull={() => markPaymentFull("deposit")}
+              received={legPayments(payments, "deposit")}
               onMarkUnpaid={() => markPaymentUnpaid("deposit")}
               notesDraft={depositNotesDraft}
               onNotesDraftChange={setDepositNotesDraft}
@@ -1249,6 +1262,7 @@ export default function EventDetailView({
               onPartialDraftChange={setBalancePartialDraft}
               onConfirmPartial={() => confirmPartialPayment("balance", Number(balancePartialDraft))}
               onMarkFull={() => markPaymentFull("balance")}
+              received={legPayments(payments, "balance")}
               onMarkUnpaid={() => markPaymentUnpaid("balance")}
               notesDraft={balanceNotesDraft}
               onNotesDraftChange={setBalanceNotesDraft}
@@ -1547,6 +1561,7 @@ function PaymentLegRow({
   onConfirmPartial,
   onMarkFull,
   onMarkUnpaid,
+  received,
   notesDraft,
   onNotesDraftChange,
   onNotesBlur,
@@ -1571,6 +1586,8 @@ function PaymentLegRow({
   onConfirmPartial: () => void;
   onMarkFull: () => void;
   onMarkUnpaid: () => void;
+  // The payments received on the leg, oldest first (lib/paymentLog.ts).
+  received: PaymentLogEntry[];
   notesDraft: string;
   onNotesDraftChange: (v: string) => void;
   onNotesBlur: () => void;
@@ -1589,13 +1606,22 @@ function PaymentLegRow({
   // (owner, 2026-10-08) — always only for received money no receipt covers yet.
   const documented = documentedAmount != null ? Number(documentedAmount) : documentUrl ? Number(amount) : 0;
   const leftToReceipt = Math.max(0, Number(amount) - documented);
+  // Paid in parts: each payment with its day, so the months they count in are clear.
+  const day = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "numeric", timeZone: "Asia/Jerusalem" });
+  const inParts = received.length > 1 ? received.map((e) => `${ils(e.amount)} (${day(e.at)})`).join(" + ") : null;
   return (
     <div className="px-4 py-3">
       <button onClick={onToggleAction} className="w-full flex items-center gap-2.5 text-start">
         <span className="flex-1 min-w-0">
           <span className="block text-[15px] font-bold">{label}</span>
           <span className="block text-xs text-ink-soft font-data">
-            {paid ? t("התקבל") : isPartial ? t("שולם חלקית, נשאר {amount}", { amount: ils(remaining ?? 0) }) : dueDateText ?? t("ממתין לתשלום")}
+            {paid
+              ? inParts
+                ? t("התקבל: {payments}", { payments: inParts })
+                : t("התקבל")
+              : isPartial
+                ? t("שולם חלקית, נשאר {amount}", { amount: ils(remaining ?? 0) })
+                : dueDateText ?? t("ממתין לתשלום")}
           </span>
         </span>
         <span className="text-base font-extrabold font-data">{ils(amount)}</span>
@@ -1609,6 +1635,18 @@ function PaymentLegRow({
           </span>
         )}
       </button>
+
+      {/* The rest of a partial payment, in one tap: it counts in the month it's marked (owner,
+          2026-11-02). The amount paid before it stays in its own month. */}
+      {isPartial && !partialOpen && (
+        <button
+          onClick={onMarkFull}
+          className="mt-2 w-full rounded-lg px-3 py-2 text-xs font-bold"
+          style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}
+        >
+          {t("השלמת תשלום {amount}", { amount: ils(remaining ?? 0) })}
+        </button>
+      )}
 
       {actionOpen && !paid && (
         <div className="mt-2 rounded-xl border border-line p-2.5" style={{ background: "var(--color-input-bg)" }}>
@@ -1638,11 +1676,13 @@ function PaymentLegRow({
             </div>
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={onMarkFull} className="text-xs font-semibold rounded-lg px-2.5 py-1.5" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
-                {t("תשלום מלא")}
-              </button>
+              {!isPartial && (
+                <button onClick={onMarkFull} className="text-xs font-semibold rounded-lg px-2.5 py-1.5" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
+                  {t("תשלום מלא")}
+                </button>
+              )}
               <button onClick={onOpenPartial} className="text-xs font-semibold rounded-lg px-2.5 py-1.5" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
-                {t("תשלום חלקי")}
+                {isPartial ? t("עדכון הסכום ששולם") : t("תשלום חלקי")}
               </button>
               {isPartial && (
                 <button onClick={onMarkUnpaid} className="text-xs text-ink-soft underline">
@@ -1672,7 +1712,7 @@ function PaymentLegRow({
         )}
         {paid && (
           <button onClick={onMarkUnpaid} className="text-ink-soft ms-auto">
-            {t("ביטול סימון")}
+            {inParts ? t("ביטול ההשלמה") : t("ביטול סימון")}
           </button>
         )}
       </div>

@@ -7,11 +7,13 @@
 import type { EventPaymentRow } from "@/lib/types";
 import type { Lang } from "@/i18n/config";
 import { amountToDocument, type PaymentLegDocState } from "@/lib/paymentDocuments";
+import type { PaymentLogEntry } from "@/lib/paymentLog";
 
 export type PaymentField = "deposit" | "balance";
 export const PAYMENT_FIELDS: readonly PaymentField[] = ["deposit", "balance"];
 
-export type QuickPaymentLeg = { amount: number; paid: boolean; paidAmount: number | null };
+// `received`: the payments that came in on the leg, oldest first (lib/paymentLog.ts).
+export type QuickPaymentLeg = { amount: number; paid: boolean; paidAmount: number | null; received: PaymentLogEntry[] };
 
 // What the menu gets from api/events/[id]/quick-actions. The messages are built on the server, so a
 // tap opens WhatsApp right away (an iPhone blocks opening it after waiting for the server).

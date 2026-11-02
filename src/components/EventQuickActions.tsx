@@ -6,6 +6,8 @@ import AnchoredMenu, { type AnchoredMenuItem } from "@/components/AnchoredMenu";
 import BodyPortal from "@/components/BodyPortal";
 import ReceiptFlow from "@/components/ReceiptFlow";
 import { createClient } from "@/lib/supabase/client";
+import { legPayments, undoPaymentPatch } from "@/lib/paymentLog";
+import type { EventPaymentRow } from "@/lib/types";
 import { openWhatsApp } from "@/lib/waLink";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
@@ -14,7 +16,6 @@ import {
   QUICK_REMINDER_KINDS,
   fullPaymentPatch,
   partialPaymentPatch,
-  unpaidPatch,
   type PaymentField,
   type QuickActionsData,
   type QuickReminderKind,
@@ -343,7 +344,13 @@ function PaymentSheet({
   const write = async (field: PaymentField, patch: Record<string, unknown>) => {
     setBusy(field);
     setError(null);
-    const { error: updateError } = await createClient().from("event_payments").update(patch).eq("event_id", eventId);
+    // The row comes back with the payments list the trigger keeps (lib/paymentLog.ts).
+    const { data: saved, error: updateError } = await createClient()
+      .from("event_payments")
+      .update(patch)
+      .eq("event_id", eventId)
+      .select()
+      .maybeSingle<EventPaymentRow>();
     setBusy(null);
     if (updateError) {
       setError(t("השמירה נכשלה. נסו שוב."));
@@ -355,6 +362,7 @@ function PaymentSheet({
         ...prev[field],
         paid: patch[`${field}_paid`] as boolean,
         paidAmount: (patch[`${field}_paid_amount`] as number | null) ?? null,
+        received: saved ? legPayments(saved, field) : prev[field].received,
       },
     }));
     setPartial(null);
@@ -418,7 +426,11 @@ function PaymentSheet({
                       onClick={() => void write(field, fullPaymentPatch(field, new Date().toISOString()))}
                       className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-ink text-white disabled:opacity-60"
                     >
-                      {busy === field ? t("שומר...") : t("תשלום מלא")}
+                      {busy === field
+                        ? t("שומר...")
+                        : isPartial
+                          ? t("השלמת תשלום {amount}", { amount: money(Math.max(0, leg.amount - (leg.paidAmount ?? 0))) })
+                          : t("תשלום מלא")}
                     </button>
                   )}
                   {!leg.paid && (
@@ -435,10 +447,10 @@ function PaymentSheet({
                     <button
                       type="button"
                       disabled={busy !== null}
-                      onClick={() => void write(field, unpaidPatch(field))}
+                      onClick={() => void write(field, undoPaymentPatch(field, leg.paid, leg.received ?? []))}
                       className="rounded-lg px-2 py-2 text-xs font-semibold text-ink-soft underline underline-offset-2 disabled:opacity-60"
                     >
-                      {t("ביטול הסימון")}
+                      {leg.paid && (leg.received?.length ?? 0) > 1 ? t("ביטול ההשלמה") : t("ביטול הסימון")}
                     </button>
                   )}
                 </div>
