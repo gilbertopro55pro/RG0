@@ -191,6 +191,34 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
     right-aligned 2-line text, a long line in a narrow box, a left-aligned 2-line text and a 2-line
     text turned 30°): both files show the same lines and sides as the editor. The page was set
     with an UPDATE on `gallery_album_spreads.elements` and set back to `[]` after.
+- **A masked photo: the outline and the shadow follow the mask's shape** (2026-11-01, user
+  request: "the outline appears on the photo's original frame and not along the mask"). Same in
+  the editor, the thumbnails, the client proofing, the JPG, the PDF and the PSD.
+  - **The outline** is the band `borderWidth` wide INSIDE everything the mask shows:
+    (mask − eroded mask)², erosion by a (2r+1) square with the frame's edge counting as outside.
+    Squared so a soft edge (fades, vignettes), where the two barely differ, gets no gray band
+    across the photo: a fade gets the line only along the frame's edges where it is solid.
+    - JPG and PDF: `addMaskOutline` in `albumRaster.ts` (`maskAlphaRaw`, `erodeAlpha` with van
+      Herk–Gil-Werman, `maskOutlineAlpha`), painted over the masked photo. The PDF bakes it into the
+      2x masked raster (`embedMaskedPhoto`) and no longer draws a rectangle for masked photos.
+    - Editor, thumbnails, proofing: `MaskedPhotoArt` (`components/MaskedPhotoArt.tsx`): an SVG
+      filter on a colored, masked layer: `feMorphology erode` on SourceGraphic, `feComposite
+      arithmetic k2=1 k3=-1`, `feFuncA gamma exponent 2`.
+    - PSD: unchanged, Photoshop's inside stroke already follows the layer's silhouette.
+  - **The shadow** is the shape's own: JPG `silhouetteShadowPng` (the finished tile's alpha, blurred
+    and offset with `shadowLayerPng`'s numbers), PDF the same layer at 2 px/pt drawn under the photo,
+    CSS `drop-shadow` on `MaskedPhotoArt`. Before, a rectangle showed gray through the cut-out parts.
+  - **The mask is the frame's** in the editor too: it was on the `<img>`, stretched over the whole
+    photo (bigger than the frame whenever it's cropped), while every export masks the frame.
+  - **Verified** browser (Chromium) vs `composePhotoTile` for 10 masks (circle, heart, flower, star,
+    torn sides, halftone, fade, vignette, brush, arch), 8px outline: mean difference 0.2–0.9/255.
+    In the editor locally on the test album: the outline follows brush, arch and filmstrip.
+  - Not verified in Safari (no WebKit here). `filter: url(#…)` on HTML is supported there.
+  - A mask with parts thinner than twice the outline (halftone dots, brush bristles) gets those
+    parts filled with the outline color: that is what an outline following the shape does.
+  - **Known, not changed:** `borderWidth` is raw pixels in every renderer: CSS px in the editor,
+    pixels at 300 DPI in the JPG/PSD, points in the PDF. So an outline prints thinner than the
+    editor shows it (rectangular outlines too).
 - **PDF page = the album's real size** (since 2026-09-24). Pages are drawn 1600 "design points"
   wide with the height following the album's proportions, then each new page is scaled with
   `page.scale` to its physical cm size (a 30×20 album gives 30.0×20.0 cm pages). Before that,

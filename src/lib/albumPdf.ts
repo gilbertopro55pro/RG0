@@ -25,7 +25,7 @@ import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import { textRotationDeg } from "@/lib/albumTextRotation";
 import { albumLineBaselines, albumTextLines } from "@/lib/albumTextSizing";
-import { ALBUM_BLUR_MAX_PX, coverCropRaw, applyMaskToRaw, ornamentLayerRaw, composeShapeTile } from "@/lib/albumRaster";
+import { ALBUM_BLUR_MAX_PX, coverCropRaw, applyMaskToRaw, addMaskOutline, silhouetteShadowPng, ornamentLayerRaw, composeShapeTile } from "@/lib/albumRaster";
 import { findOrnament } from "@/lib/albumOrnaments";
 import { hasAdjustments, applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import { sharpSharpenOptions } from "@/lib/albumSharpen";
@@ -550,8 +550,13 @@ export async function generateAlbumPdf({
     blurPct: number | undefined,
     zoom: number | undefined,
     adjustments: PhotoAdjustments | undefined,
-    sharpness: number | undefined
-  ): Promise<PDFImage | null> => {
+    sharpness: number | undefined,
+    // The outline and the shadow follow the mask's shape, as in the editor, the JPG and the PSD
+    // (2026-11-01): the outline is baked into the raster (addMaskOutline), and the shadow is its own
+    // blurred silhouette, drawn under it (silhouetteShadowPng), in points around the frame.
+    outline?: { width?: number; color?: string },
+    shadow?: { pct?: number; distance?: number; blur?: number; angle?: number }
+  ): Promise<{ image: PDFImage; shadow: { image: PDFImage; leftPt: number; topPt: number; widthPt: number; heightPt: number } | null } | null> => {
     if (!photoId) return null;
     const photo = photosById.get(photoId);
     const buffer = photo ? await downloadCached("galleries", photo.storage_path) : null;
@@ -562,9 +567,22 @@ export async function generateAlbumPdf({
     try {
       const cropped = await coverCropRaw(buffer, pxW, pxH, focalX, focalY, filter, true, { blur: blurPct, zoom, adjustments, sharpness });
       if (!cropped) return null;
-      const masked = await applyMaskToRaw(cropped.data, pxW, pxH, maskId);
+      let masked = await applyMaskToRaw(cropped.data, pxW, pxH, maskId);
+      if (outline?.width) masked = await addMaskOutline(masked, pxW, pxH, maskId, outline.width * scale, outline.color);
       const png = await sharp(masked, { raw: { width: pxW, height: pxH, channels: 4 } }).png().toBuffer();
-      return await embedImageAuto(pdfDoc, png);
+      const image = await embedImageAuto(pdfDoc, png);
+      if (!image) return null;
+      const layer = shadow?.pct
+        ? await silhouetteShadowPng({ data: masked, width: pxW, height: pxH, left: 0, top: 0 }, 0, 0, shadow.pct, shadow.distance, shadow.blur, shadow.angle, undefined, undefined, scale)
+        : null;
+      const shadowImage = layer ? await embedImageAuto(pdfDoc, layer.buffer) : null;
+      return {
+        image,
+        shadow:
+          layer && shadowImage
+            ? { image: shadowImage, leftPt: layer.left / scale, topPt: layer.top / scale, widthPt: layer.width / scale, heightPt: layer.height / scale }
+            : null,
+      };
     } catch {
       return null;
     }
@@ -734,7 +752,7 @@ export async function generateAlbumPdf({
           // Pre-cropped and pre-masked to the frame's exact box (see embedMaskedPhoto) — opacity
           // still applies at draw time same as the unmasked path, but no cover-fit clip is needed
           // since the raster already fills the rect exactly.
-          const maskedImage = await embedMaskedPhoto(
+          const masked = await embedMaskedPhoto(
             el.photoId,
             el.maskId,
             width,
@@ -756,15 +774,19 @@ export async function generateAlbumPdf({
               vibrance: el.vibrance,
               saturation2: el.saturation2,
             },
-            el.sharpness
+            el.sharpness,
+            { width: el.borderWidth, color: el.borderColor },
+            { pct: el.shadow, distance: el.shadowDistance, blur: el.shadowBlur, angle: el.shadowAngle }
           );
-          if (!maskedImage) continue;
+          if (!masked) continue;
           pushFrameRotation(page, rect, el.rotation);
-          drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle);
-          page.drawImage(maskedImage, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
-          if (el.borderWidth) {
-            page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
+          const opacity = el.opacity !== undefined ? el.opacity / 100 : undefined;
+          if (masked.shadow) {
+            // topPt is down from the frame's top; PDF's y runs up from the page's bottom.
+            const sh = masked.shadow;
+            page.drawImage(sh.image, { x: x + sh.leftPt, y: y + height - sh.topPt - sh.heightPt, width: sh.widthPt, height: sh.heightPt, opacity });
           }
+          page.drawImage(masked.image, { x, y, width, height, opacity });
           popFrameRotation(page);
           continue;
         }

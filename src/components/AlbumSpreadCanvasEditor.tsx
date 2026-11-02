@@ -14,6 +14,7 @@ import { sharpenSvgFilter } from "@/lib/albumSharpen";
 import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
+import MaskedPhotoArt from "@/components/MaskedPhotoArt";
 import MarkedFrameDots from "@/components/galleryManage/MarkedFrameDots";
 import { useT } from "@/i18n/client";
 import type { TFn } from "@/i18n/translate";
@@ -5164,7 +5165,10 @@ export default function AlbumSpreadCanvasEditor({
                       // only became visible once opacity/blur made the photo partially see-through.
                       // Fixed the same way as the desktop app's SpreadPreview.tsx: border now lives
                       // on a separate, later sibling div below (guaranteed to paint above the img).
-                      boxShadow: boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle),
+                      // A photo with a mask draws its own shadow, in the mask's shape (MaskedPhotoArt),
+                      // so this box doesn't clip it.
+                      boxShadow: el.maskId && photo ? undefined : boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle),
+                      overflow: el.maskId && photo ? "visible" : undefined,
                       // Rotation lives on THIS element (not the <img>) so the outline and
                       // box-shadow — both decorations of this same box — rotate along with the
                       // clipped photo as one rigid tile, instead of only the image content
@@ -5180,7 +5184,7 @@ export default function AlbumSpreadCanvasEditor({
                         const frameAspect = ((el.widthPct * album.width_cm) / (el.heightPct * album.height_cm)) || 1;
                         const imgAspect = photoAspects[photo.id] ?? frameAspect;
                         const framing = computePhotoFraming(imgAspect, frameAspect, el.zoom ?? 100, el.focalX, el.focalY);
-                        return (
+                        const img = (
                           /* eslint-disable-next-line @next/next/no-img-element */
                           <img
                             src={resizedPhotoUrl(photo, 2000)}
@@ -5201,18 +5205,20 @@ export default function AlbumSpreadCanvasEditor({
                               maxHeight: "none",
                               filter: cssFilterFor(el.filter, el.blur, { id: el.id, adj: el }, el.sharpness),
                               opacity: (el.opacity ?? 100) / 100,
-                              ...(el.maskId
-                                ? {
-                                    WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                                    maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                                    WebkitMaskSize: "100% 100%",
-                                    maskSize: "100% 100%",
-                                    WebkitMaskRepeat: "no-repeat",
-                                    maskRepeat: "no-repeat",
-                                  }
-                                : null),
                             }}
                           />
+                        );
+                        return el.maskId ? (
+                          <MaskedPhotoArt
+                            maskId={el.maskId}
+                            outlineWidth={el.borderWidth}
+                            outlineColor={el.borderColor}
+                            shadow={boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle)}
+                          >
+                            {img}
+                          </MaskedPhotoArt>
+                        ) : (
+                          img
                         );
                       })()
                     ) : (
@@ -5227,7 +5233,7 @@ export default function AlbumSpreadCanvasEditor({
                         +
                       </span>
                     )}
-                    {!!el.borderWidth && (
+                    {!!el.borderWidth && !(el.maskId && photo) && (
                       // A later sibling than the <img> above, not the parent's own box-shadow —
                       // guarantees the border paints ON TOP of the photo regardless of stacking-
                       // context edge cases. See the parent's boxShadow comment for the full story.
