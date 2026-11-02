@@ -1608,7 +1608,7 @@ function PaymentLegRow({
   const leftToReceipt = Math.max(0, Number(amount) - documented);
   // Paid in parts: each payment with its day, so the months they count in are clear.
   const day = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "numeric", timeZone: "Asia/Jerusalem" });
-  const inParts = received.length > 1 ? received.map((e) => `${ils(e.amount)} (${day(e.at)})`).join(" + ") : null;
+  const inParts = received.length > 1 ? received.map((e) => t("{amount} ב-{date}", { amount: ils(e.amount), date: day(e.at) })).join(" + ") : null;
   return (
     <div className="px-4 py-3">
       <button onClick={onToggleAction} className="w-full flex items-center gap-2.5 text-start">
