@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { ALBUM_MASKS, findMask, maskCssUrl } from "@/lib/albumMasks";
+import { ALBUM_MASKS, PACK_MASK_IDS, findMask, maskCssUrl } from "@/lib/albumMasks";
 import { messagesFor } from "@/i18n/dict";
 
 // The editor's masks (owner, 2026-11-01: 20 more creative ones). Each is one SVG string, drawn as a
@@ -33,6 +33,54 @@ const CREATIVE = [
 // Six more from the owner's reference album (a bat mitzvah book, 2026-11-02), right after those.
 const REFERENCE = ["shape-hexagon-rounded", "shape-circle-ring", "creative-grunge", "creative-arc-right", "creative-arc-left", "soft-edge-narrow"];
 
+// Our own versions of the looks in the owner's mask pack (2026-11-02), right after those, in this
+// order. Admin only for now (PACK_MASK_IDS).
+const PACK = [
+  "pack-spray",
+  "pack-dry-brush",
+  "pack-scratched",
+  "pack-soft-rounded",
+  "pack-soft-oval",
+  "pack-soft-wide",
+  "pack-leaf-wreath",
+  "pack-floral-corners",
+  "pack-heart-bokeh",
+  "pack-halftone-edge",
+  "pack-crosshatch-edge",
+  "pack-lines-edge",
+  "pack-cloud-frame",
+  "pack-daisy",
+  "pack-pinking",
+  "pack-seal",
+  "pack-burst",
+  "pack-burst-rect",
+  "pack-cartouche",
+  "pack-ticket",
+  "pack-torn-paper",
+  "pack-torn-corner",
+  "pack-page-curl",
+  "pack-grass",
+  "pack-line-frame",
+  "pack-double-line",
+  "pack-triple-line",
+  "pack-folder",
+  "pack-film-vertical",
+  "pack-film-three",
+  "pack-puzzle-piece",
+  "pack-puzzle",
+  "pack-stars",
+  "pack-star-border",
+  "pack-shards",
+  "pack-shattered",
+  "pack-spiral",
+  "pack-pinwheel",
+  "pack-corner-sweep",
+  "pack-light-band",
+  "pack-double-arch",
+  "pack-checker-border",
+  "pack-lace",
+];
+
 // The mask's alpha at w×h, rasterized as an export does it.
 async function alphaOf(svg: string, w: number, h: number) {
   const sized = svg.replace("<svg ", `<svg width="${w}" height="${h}" `);
@@ -59,7 +107,24 @@ describe("album masks", () => {
     for (const id of [...CREATIVE, ...REFERENCE]) expect(findMask(id), id).toBeTruthy();
     const after = ids.indexOf("pattern-hearts") + 1;
     expect(ids.slice(after, after + REFERENCE.length)).toEqual(REFERENCE);
-    expect(ALBUM_MASKS.length).toBe(80);
+    expect(ALBUM_MASKS.length).toBe(80 + PACK.length);
+  });
+
+  it("has the pack masks right after the reference ones, in order, and PACK_MASK_IDS is exactly them", () => {
+    const ids = ALBUM_MASKS.map((m) => m.id);
+    for (const id of PACK) expect(findMask(id), id).toBeTruthy();
+    const after = ids.indexOf("soft-edge-narrow") + 1;
+    expect(ids.slice(after, after + PACK.length)).toEqual(PACK);
+    expect([...PACK_MASK_IDS].sort()).toEqual([...PACK].sort());
+    // Not "shape-": those also show in the shapes picker.
+    for (const id of PACK) expect(id.startsWith("pack-"), id).toBe(true);
+    // A label is a translation key, so each one is new and used once.
+    const labels = ALBUM_MASKS.map((m) => m.label);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("keeps every pack mask small: it's a data URI on every masked photo and thumbnail", () => {
+    for (const id of PACK) expect(findMask(id)!.svg.length, id).toBeLessThan(20 * 1024);
   });
 
   it("names every mask in English and Russian", () => {
@@ -75,11 +140,11 @@ describe("album masks", () => {
   it("is the same string every time (the seeded ones too)", async () => {
     vi.resetModules();
     const again = (await import("@/lib/albumMasks")).ALBUM_MASKS;
-    for (const id of [...CREATIVE, ...REFERENCE]) expect(again.find((m) => m.id === id)!.svg).toBe(findMask(id)!.svg);
+    for (const id of [...CREATIVE, ...REFERENCE, ...PACK]) expect(again.find((m) => m.id === id)!.svg).toBe(findMask(id)!.svg);
   });
 
   // The narrow soft edge shows the whole photo, so it's checked on its own below.
-  for (const id of [...CREATIVE, ...REFERENCE.filter((r) => r !== "soft-edge-narrow")]) {
+  for (const id of [...CREATIVE, ...REFERENCE.filter((r) => r !== "soft-edge-narrow"), ...PACK]) {
     it(`${id}: renders in the export, showing part of the frame and hiding part of it`, async () => {
       const svg = findMask(id)!.svg;
       expect(svg.startsWith("<svg ")).toBe(true);
