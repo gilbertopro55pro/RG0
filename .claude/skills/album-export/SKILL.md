@@ -220,9 +220,13 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   - Not verified in Safari (no WebKit here). `filter: url(#…)` on HTML is supported there.
   - A mask with parts thinner than twice the outline (halftone dots, brush bristles) gets those
     parts filled with the outline color: that is what an outline following the shape does.
-  - **Known, not changed:** `borderWidth` is raw pixels in every renderer: CSS px in the editor,
-    pixels at 300 DPI in the JPG/PSD, points in the PDF. So an outline prints thinner than the
-    editor shows it (rectangular outlines too).
+  - **Outline width (fixed 2026-11-02):** `borderWidth` is px on a page 1000px wide
+    (`OUTLINE_REF_WIDTH`, `outlineWidthAt`, `outlineCss` in `albumRender.ts`). Editor, thumbnails and
+    proofing: `calc(w * 100cqw / 1000)` (each page is a size container; `MaskedPhotoArt` measures
+    the page with a 100cqw probe for the SVG erode radius). JPG/PSD: `resolvePageElements` scales
+    by pageWidthPx/1000. PDF: by pageW/1000, stroked INSIDE the frame (`drawFrameBorder`).
+    Verified live (test album, outline 3): 10–11px on a 3,543px page in the JPG and the PDF, 2.44px
+    on an 815px editor page — 3/1000 everywhere. To check: count the dark run at a frame edge.
 - **PDF page = the album's real size** (since 2026-09-24). Pages are drawn 1600 "design points"
   wide with the height following the album's proportions, then each new page is scaled with
   `page.scale` to its physical cm size (a 30×20 album gives 30.0×20.0 cm pages). Before that,
