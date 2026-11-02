@@ -14,7 +14,7 @@ export type AutoStyleId = "clean" | "catalog" | "scribble" | "modern";
 
 export const AUTO_STYLES: { id: AutoStyleId; name: string; description: string }[] = [
   { id: "clean", name: "קו נקי", description: "תמונה ראשית עד הקצה עם דהייה, רשת מסודרת ורקע מטושטש" },
-  { id: "catalog", name: "קטלוג", description: "מגזין: תמונה ראשית ממוסגרת ושורות מדויקות, בלי תמונות עד הקצה" },
+  { id: "catalog", name: "קטלוג", description: "בוק מעוצב: תמונה ראשית גדולה, רשת ממוסגרת, משושים ופאנל שקוף" },
   { id: "scribble", name: "מקושקש", description: "תמונות מוטות עם סלוטייפ על נייר קרפט, כמו אלבום הדבקות" },
   { id: "modern", name: "מודרני", description: "רקע כהה, תמונות צמודות בלי מסגרות וקווים זהובים דקים" },
 ];
