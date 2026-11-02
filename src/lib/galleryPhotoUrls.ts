@@ -33,6 +33,12 @@ export function clientPreviewUrl(token: string, photoId: string): string {
   return `/api/gallery/${token}/photos/${photoId}/preview`;
 }
 
+// The same preview from this site, not a redirect to the CDN: for drawing on a canvas (the
+// slideshow video, lib/slideshowVideo.ts), which another site's photo would block.
+export function clientInlinePreviewUrl(token: string, photoId: string): string {
+  return `${clientPreviewUrl(token, photoId)}?inline=1`;
+}
+
 // What the client's screen shows of a photo (a thumbnail, the slideshow, the favorites panel):
 // its preview, or the preview route. Never the original.
 export function clientScreenUrl(token: string, photo: { id: string; previewUrl?: string | null }): string {

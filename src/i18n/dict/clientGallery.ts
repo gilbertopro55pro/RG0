@@ -6,6 +6,16 @@ import type { AreaDict } from "@/i18n/types";
 // gallery screens (galleries.ts) or common.ts are reused from there, not repeated here.
 const dict: AreaDict = {
   en: {
+    // The slideshow as a video (2026-11-02).
+    "הורדת המצגת כסרטון": "Download the slideshow as a video",
+    "מכין את הסרטון של המצגת… {pct}%": "Making the slideshow video… {pct}%",
+    "הסרטון נוצר במכשיר. כדאי להשאיר את החלון פתוח עד הסוף.": "The video is made on this device. Keep this window open until it's done.",
+    "הסרטון מוכן": "The video is ready",
+    "הדפדפן הזה לא יכול ליצור סרטון.": "This browser can't make a video.",
+    "אפשר ליצור אותו בכרום או בספארי מעודכנים, במחשב או בטלפון.": "You can make it in an up-to-date Chrome or Safari, on a computer or a phone.",
+    "הורדת התמונות במקום": "Download the photos instead",
+    "יצירת הסרטון נכשלה. אפשר לנסות שוב.": "Making the video failed. Please try again.",
+    "ניסיון נוסף": "Try again",
     // Page + metadata
     "צפו וסמנו את התמונות הנבחרות שלכם מתוך הגלריה": "View the gallery and mark your favorite photos",
     // Premium theme: cover, sticky bar, chapters, footer
@@ -169,6 +179,16 @@ const dict: AreaDict = {
     "הגלריה לא נמצאה": "Gallery not found",
   },
   ru: {
+    // The slideshow as a video (2026-11-02).
+    "הורדת המצגת כסרטון": "Скачать слайд-шоу как видео",
+    "מכין את הסרטון של המצגת… {pct}%": "Создаём видео слайд-шоу… {pct}%",
+    "הסרטון נוצר במכשיר. כדאי להשאיר את החלון פתוח עד הסוף.": "Видео создаётся на этом устройстве. Не закрывайте окно до конца.",
+    "הסרטון מוכן": "Видео готово",
+    "הדפדפן הזה לא יכול ליצור סרטון.": "Этот браузер не может создать видео.",
+    "אפשר ליצור אותו בכרום או בספארי מעודכנים, במחשב או בטלפון.": "Создайте его в обновлённом Chrome или Safari, на компьютере или телефоне.",
+    "הורדת התמונות במקום": "Скачать фотографии вместо видео",
+    "יצירת הסרטון נכשלה. אפשר לנסות שוב.": "Не удалось создать видео. Попробуйте ещё раз.",
+    "ניסיון נוסף": "Ещё раз",
     // Page + metadata
     "צפו וסמנו את התמונות הנבחרות שלכם מתוך הגלריה": "Смотрите галерею и отмечайте понравившиеся фото",
     // Premium theme: cover, sticky bar, chapters, footer

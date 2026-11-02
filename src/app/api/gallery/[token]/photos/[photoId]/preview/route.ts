@@ -37,5 +37,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
     return NextResponse.json({ error: "שגיאה בטעינת התמונה" }, { status: 404 });
   }
 
+  // ?inline=1: the preview's bytes from this site, not a redirect to the CDN. The slideshow video
+  // (lib/slideshowVideo.ts) draws the photos on a canvas, and a photo from another site without CORS
+  // headers would block the canvas from becoming a video.
+  if (new URL(request.url).searchParams.get("inline") === "1") {
+    const res = await fetch(url).catch(() => null);
+    if (!res?.ok) return NextResponse.json({ error: "שגיאה בטעינת התמונה" }, { status: 404 });
+    return new Response(new Uint8Array(await res.arrayBuffer()), {
+      headers: { "Content-Type": res.headers.get("content-type") ?? "image/webp", "Cache-Control": "private, max-age=3600" },
+    });
+  }
+
   return NextResponse.redirect(url);
 }

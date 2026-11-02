@@ -5,7 +5,7 @@ import type { GalleryPhotoRow } from "@/lib/types";
 import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
-import { clientScreenUrl } from "@/lib/galleryPhotoUrls";
+import { clientInlinePreviewUrl, clientScreenUrl } from "@/lib/galleryPhotoUrls";
 import { IconGallery } from "@/components/icons/NavIcons";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { resolveGalleryTheme, titleFontFamily } from "@/lib/galleryTheme";
@@ -2739,8 +2739,15 @@ export default function PublicGalleryView({
         <GallerySlideshow
           photos={slideshowPhotos.map((p) => ({ id: p.id, url: clientScreenUrl(token, p) }))}
           onClose={() => setSlideshowOpen(false)}
-          onDownload={allowDownloads ? () => downloadZip(slideshowPhotos.map((p) => p.id)) : undefined}
-          downloading={zipping}
+          video={
+            allowDownloads
+              ? {
+                  photoUrl: (id) => clientInlinePreviewUrl(token, id),
+                  title: null,
+                  photosFallback: () => downloadZip(slideshowPhotos.map((p) => p.id)),
+                }
+              : undefined
+          }
         />
       )}
 

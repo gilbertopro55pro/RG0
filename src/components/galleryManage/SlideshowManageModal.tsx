@@ -5,6 +5,7 @@ import { useT } from "@/i18n/client";
 import { BTN_PRESS } from "@/lib/viewTransition";
 import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 import { PlayIcon } from "@/components/GalleryStyleIcons";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 // "מצגת תמונות" in the gallery screen: which photos go into the client's slideshow. Moved out of
 // GalleryManageView as it was (2026-10-23).
@@ -53,7 +54,18 @@ export function SlideshowManageModal({
         className={`w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto ${roomy ? "lg:max-w-none lg:w-[80vw] lg:p-6" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-bold font-display mb-4">{t("מצגת תמונות")}</h2>
+        {/* The title stays on top while the photos scroll, with an X in the top-right corner (owner,
+            2026-11-02): the only way out was "ביטול", under all the photos. */}
+        <div className={`sticky top-0 z-10 -mx-5 -mt-5 px-5 pt-5 pb-3 mb-1 bg-paper rounded-t-3xl ${roomy ? "lg:-mx-6 lg:-mt-6 lg:px-6 lg:pt-6" : ""}`}>
+          <h2 className="text-lg font-bold font-display pr-11">{t("מצגת תמונות")}</h2>
+          <button
+            onClick={onClose}
+            aria-label={t("סגירה")}
+            className={`absolute top-4 right-4 h-9 w-9 rounded-full flex items-center justify-center bg-white border border-line text-ink ${roomy ? "lg:top-5 lg:right-5" : ""}`}
+          >
+            <IconClose className="h-4 w-4" />
+          </button>
+        </div>
         <p className="text-xs text-ink-soft mb-3.5">
           {t("בוחרים אילו תמונות ייכנסו למצגת ללקוח, היא תוצג במסך מלא עם אפקטים רנדומליים.")}
         </p>
