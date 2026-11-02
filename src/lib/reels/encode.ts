@@ -19,6 +19,9 @@ export async function exportReelMp4(opts: {
   isCancelled?: () => boolean;
   // The finished soundtrack (already trimmed, faded and at its volume), or null for none.
   audio?: AudioBuffer | null;
+  // Bits per second; the default is Mediabunny's high quality. The gallery slideshow (a long video
+  // of still photos, held in memory while it's made) asks for less.
+  bitrate?: number;
 }): Promise<Blob> {
   const { canvas, total, draw } = opts;
   if (typeof window === "undefined" || !("VideoEncoder" in window)) throw new ReelUnsupportedError("no-webcodecs");
@@ -30,7 +33,7 @@ export async function exportReelMp4(opts: {
   if (!mp4 && !(await canEncodeVideo("vp9", size))) throw new ReelUnsupportedError("no-codec");
 
   const output = new Output({ format: mp4 ? new Mp4OutputFormat({ fastStart: "in-memory" }) : new WebMOutputFormat(), target: new BufferTarget() });
-  const source = new CanvasSource(canvas, { codec: mp4 ? "avc" : "vp9", bitrate: QUALITY_HIGH, keyFrameInterval: 2 });
+  const source = new CanvasSource(canvas, { codec: mp4 ? "avc" : "vp9", bitrate: opts.bitrate ?? QUALITY_HIGH, keyFrameInterval: 2 });
   output.addVideoTrack(source, { frameRate: REEL_FPS });
   // Music: AAC in an MP4 (what the networks expect), Opus in a WebM. A browser without its own AAC
   // encoder (Safari, some Chromium builds) gets a WASM one, loaded only when it's needed.

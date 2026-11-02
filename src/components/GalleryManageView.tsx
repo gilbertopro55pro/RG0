@@ -30,7 +30,7 @@ import { dropTarget, folderTree, folderWithChildren, mainFolderId, nextSortOrder
 import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
 import { STARTER_BOOK_TEMPLATES, generateStarterBookPages, type StarterTemplateId } from "@/lib/albumStarterTemplates";
 import { usePinchSize } from "@/lib/usePinchColumns";
-import { photographerOriginalUrl, resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
+import { photographerImageUrl, photographerOriginalUrl, resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 import { refreshIfDataChanged } from "@/lib/dataChanges";
 import { IconGallery, IconTrash } from "@/components/icons/NavIcons";
 import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck, IconRotateDevice } from "@/components/icons/AlbumIcons";
@@ -4879,8 +4879,12 @@ export default function GalleryManageView({
         <GallerySlideshow
           photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: resizedPhotoUrl(p, 1920) }))}
           onClose={() => setSlideshowPreviewOpen(false)}
-          onDownload={downloadSlideshowZip}
-          downloading={zippingFavorites}
+          video={{
+            // From this site (the canvas can't take the CDN's previews): the server-resized photo.
+            photoUrl: (id) => photographerImageUrl(gallery.id, id, 1920),
+            title: gallery.title,
+            photosFallback: downloadSlideshowZip,
+          }}
         />
       )}
 
