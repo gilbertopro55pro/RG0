@@ -2,6 +2,7 @@ import type { AlbumElement, AlbumFrame, AlbumPhotoElement } from "@/lib/types";
 import { fitAutoElements, fitFramesToSafeArea } from "@/lib/albumSafeArea";
 import { generateTemplateFrames } from "@/lib/albumTemplateBank";
 import { layoutSpread } from "./layouts";
+import { catalogSpread } from "./catalogLayout";
 import { frameElements, rankTemplates, templatesForCount, type FrameFinish } from "./templateFill";
 import type { AutoStyleId, LayoutPhoto } from "./types";
 import { collageLayout, type CollageCell } from "@/lib/collage/layout";
@@ -57,11 +58,24 @@ export function engineLayouts(p: {
   inset: { x: number; y: number } | null;
 }): EngineLayout[] {
   const out: EngineLayout[] = [];
-  for (let v = 0; v < 14; v++) {
-    const res = layoutSpread({ style: p.style, photos: p.photos, section: "event", spreadIndex: p.pageIndex, widthCm: p.widthCm, heightCm: p.heightCm, variant: v });
+  const add = (res: { elements: AlbumElement[]; bleedIds?: string[] }, v: string) => {
     const els = fitAutoElements(res.elements, p.inset, res.bleedIds ?? []).map((el) => ({ ...el, id: `${el.id}-rd${v}` })) as AlbumElement[];
     const photos = els.filter((el): el is AlbumPhotoElement => el.type === "photo");
     if (photos.length === p.photos.length) out.push({ els, photos });
+  };
+  // The catalog's own spreads first (the reference book's look, owner 2026-11-02): each type that
+  // fits these photos once.
+  if (p.style === "catalog") {
+    const types = new Set<string>();
+    for (let v = 0; v < 8; v++) {
+      const res = catalogSpread({ style: p.style, photos: p.photos, section: "event", spreadIndex: p.pageIndex, widthCm: p.widthCm, heightCm: p.heightCm, variant: v });
+      if (!res || types.has(res.type)) continue;
+      types.add(res.type);
+      add(res, `c${v}`);
+    }
+  }
+  for (let v = 0; v < 14; v++) {
+    add(layoutSpread({ style: p.style, photos: p.photos, section: "event", spreadIndex: p.pageIndex, widthCm: p.widthCm, heightCm: p.heightCm, variant: v }), String(v));
   }
   return out;
 }

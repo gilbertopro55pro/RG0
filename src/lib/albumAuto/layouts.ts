@@ -372,6 +372,19 @@ function pack(photos: P[], idxs: number[], region: Rect, g: number, opts: PackOp
   };
 }
 
+// The packer for other layout files (catalogLayout.ts): `photos` laid out inside `region` with gap
+// `gap` (cm), every photo once, cropped at most `maxStretch` toward its frame.
+export function packPhotos(
+  photos: { id: string; aspect: number }[],
+  region: { x: number; y: number; w: number; h: number },
+  gap: number,
+  opts: { alignX?: Align; alignY?: Align; permute?: boolean; maxStretch?: number; preferEqual?: number; cropWeight?: number } = {}
+): { placed: { idx: number; r: { x: number; y: number; w: number; h: number } }[]; used: { x: number; y: number; w: number; h: number } } | null {
+  const ps = photos.map((p) => ({ id: p.id, aspect: safeAspect(p.aspect) }));
+  const res = pack(ps, ps.map((_, i) => i), region, gap, opts);
+  return res ? { placed: res.placed, used: res.used } : null;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Face-aware crop
 // ---------------------------------------------------------------------------------------------

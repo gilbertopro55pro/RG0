@@ -36,6 +36,8 @@ import {
   type WeddingStage,
 } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutOpener, layoutSpread } from "@/lib/albumAuto/layouts";
+import { catalogCover, catalogSpread, type CatalogType } from "@/lib/albumAuto/catalogLayout";
+import { subTabLabel } from "@/lib/portfolioNames";
 import { headSafeElements } from "@/lib/albumAuto/headSafe";
 import { bookElements, bookFadePage, bookPage } from "@/lib/albumAuto/bookLayout";
 import { AUTO_OUTLINE_DEFAULT, AUTO_OUTLINE_MAX, clampOutlineWidth, withAutoOutline, type AutoOutline } from "@/lib/albumAuto/outline";
@@ -601,7 +603,10 @@ export default function AlbumAutoDesigner({
               .map((tpl) => tpl.frames)
               .filter((f) => Array.isArray(f) && f.length > 0)
               .map(tidyOwnFrames);
-            const ownPlan = ownTemplatePlan(
+            // The catalog style is a designed book (owner, 2026-11-02: "this is how the catalog should
+            // look", a reference bat mitzvah book): its own spreads on every page, the photographer's
+            // templates aside, or most pages would be the templates and the book would lose its look.
+            const ownPlan = style === "catalog" ? [] : ownTemplatePlan(
               plan.spreads.map((s) => [...new Set(s.photoIds)].map(layoutPhoto)),
               ownFrames,
               size.width,
@@ -611,11 +616,37 @@ export default function AlbumAutoDesigner({
             let lastBookShape: string | null = null;
             // The faded pages in turn, so the faded photo's side alternates between them.
             let fadeTurn = 0;
+            // The catalog: the types used so far (none repeats right away, the special ones stay
+            // rare), and the tabs already named on a page (a book's place, once, on its first page).
+            const catalogRecent: CatalogType[] = [];
+            const namedTabs = new Set<string>();
+            const tabNameOf = new Map(autoPhotos.map((p) => [p.id, p.tab?.name ?? null]));
             return plan.spreads.map((s, i) => {
               if (s.opener) {
                 // The combined album's opening page for its second event: its photo and its name.
                 const out = layoutOpener({ style, photo: layoutPhoto(s.photoIds[0]), title: s.opener.title, spreadIndex: i, widthCm: size.width, heightCm: size.height });
                 return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...(out.background ? { background: out.background } : {}) };
+              }
+              if (style === "catalog") {
+                const tab = s.book ? tabNameOf.get(s.photoIds[0]) : null;
+                const title = tab && !namedTabs.has(tab) ? subTabLabel(tab) : undefined;
+                const cat = catalogSpread({
+                  style,
+                  photos: [...new Set(s.photoIds)].map(layoutPhoto),
+                  heroId: s.heroId,
+                  section: s.section,
+                  spreadIndex: i,
+                  widthCm: size.width,
+                  heightCm: size.height,
+                  title,
+                  recent: catalogRecent,
+                });
+                if (cat) {
+                  catalogRecent.push(cat.type);
+                  // A spread with no free place for the name (faces, frames) leaves it to the tab's next.
+                  if (tab && title && cat.elements.some((e) => e.type === "text")) namedTabs.add(tab);
+                  return { elements: cat.elements, bleedIds: cat.bleedIds ?? [], ...(cat.background ? { background: cat.background } : {}) };
+                }
               }
               const out = layoutSpread({
                 style,
@@ -666,14 +697,16 @@ export default function AlbumAutoDesigner({
               widthCm: coverSize.width,
               heightCm: coverSize.height,
               ...(() => {
-                const out = layoutCover({
+                const coverInput = {
                   style,
                   photo: plan.coverPhotoId ? layoutPhoto(plan.coverPhotoId) : null,
                   title: galleryTitle,
                   lines: runParts ? combinedCoverLines(galleryTitle, runParts, eventDate) : coverTitleLines(galleryTitle, eventDate),
                   widthCm: coverSize.width,
                   heightCm: coverSize.height,
-                });
+                };
+                // The catalog's cover: the photo in a circle with a ring, the name in a thin frame.
+                const out = (style === "catalog" ? catalogCover(coverInput) : null) ?? layoutCover(coverInput);
                 return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...(out.background ? { background: out.background } : {}) };
               })(),
             }
