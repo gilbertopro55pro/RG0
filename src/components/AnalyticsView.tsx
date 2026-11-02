@@ -8,6 +8,7 @@ import type { EventPaymentRow } from "@/lib/types";
 import type { AnalyticsEvent } from "@/app/analytics/page";
 import PageGuide from "@/components/PageGuide";
 import { closingRecognitions } from "@/lib/closeEvent";
+import { revenueEntries, type PaymentKind } from "@/lib/paymentLog";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
 import { openBalances } from "@/lib/openBalances";
@@ -28,6 +29,12 @@ const HEBREW_MONTHS = [
 const HEBREW_MONTHS_SHORT = [
   "ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ",
 ];
+
+// A received payment's row in the month's list (Hebrew keys, translated where shown).
+const PAYMENT_ROW_LABEL: Record<"deposit" | "balance", Record<PaymentKind, string>> = {
+  deposit: { full: "מקדמה", partial: "מקדמה (חלקי)", completion: "מקדמה (השלמת תשלום)" },
+  balance: { full: "יתרה", partial: "יתרה (חלקי)", completion: "יתרה (השלמת תשלום)" },
+};
 
 function monthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
@@ -91,22 +98,12 @@ export default function AnalyticsView({
   const revenueByMonth = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of recognitions) map.set(r.month, (map.get(r.month) ?? 0) + r.amount);
-    // A partial payment (deposit_paid/balance_paid still false, *_paid_amount set) counts only the
-    // amount actually received, not the full declared leg — otherwise revenue would be overstated
-    // for anyone paying in installments before the leg is fully settled.
-    for (const p of payments) {
-      if (p.deposit_paid_at) {
-        const d = new Date(p.deposit_paid_at);
-        const key = monthKey(d.getFullYear(), d.getMonth() + 1);
-        const received = p.deposit_paid ? Number(p.deposit_amount) : Number(p.deposit_paid_amount ?? 0);
-        map.set(key, (map.get(key) ?? 0) + received);
-      }
-      if (p.balance_paid_at) {
-        const d = new Date(p.balance_paid_at);
-        const key = monthKey(d.getFullYear(), d.getMonth() + 1);
-        const received = p.balance_paid ? Number(p.balance_amount) : Number(p.balance_paid_amount ?? 0);
-        map.set(key, (map.get(key) ?? 0) + received);
-      }
+    // Each payment counts in the month it came in: a partial payment in its month, the completion of
+    // it in the completion's month (lib/paymentLog.ts).
+    for (const r of revenueEntries(payments)) {
+      const d = new Date(r.at);
+      const key = monthKey(d.getFullYear(), d.getMonth() + 1);
+      map.set(key, (map.get(key) ?? 0) + r.amount);
     }
     return map;
   }, [payments, recognitions]);
@@ -165,18 +162,13 @@ export default function AnalyticsView({
 
   const monthTransactions = useMemo(() => {
     const rows: { date: string; clientName: string; label: string; pkg: string; amount: number }[] = [];
-    for (const p of payments) {
-      const event = eventById.get(p.event_id);
+    for (const r of revenueEntries(payments)) {
+      const d = new Date(r.at);
+      if (monthKey(d.getFullYear(), d.getMonth() + 1) !== selectedKey) continue;
+      const event = eventById.get(r.eventId);
       if (!event) continue;
       const pkgLabel = PACKAGE_LABELS[event.package as keyof typeof PACKAGE_LABELS] ?? event.package;
-      if (p.deposit_paid_at && monthKey(new Date(p.deposit_paid_at).getFullYear(), new Date(p.deposit_paid_at).getMonth() + 1) === selectedKey) {
-        const received = p.deposit_paid ? Number(p.deposit_amount) : Number(p.deposit_paid_amount ?? 0);
-        rows.push({ date: p.deposit_paid_at, clientName: event.client_name, label: p.deposit_paid ? "מקדמה" : "מקדמה (חלקי)", pkg: pkgLabel, amount: received });
-      }
-      if (p.balance_paid_at && monthKey(new Date(p.balance_paid_at).getFullYear(), new Date(p.balance_paid_at).getMonth() + 1) === selectedKey) {
-        const received = p.balance_paid ? Number(p.balance_amount) : Number(p.balance_paid_amount ?? 0);
-        rows.push({ date: p.balance_paid_at, clientName: event.client_name, label: p.balance_paid ? "יתרה" : "יתרה (חלקי)", pkg: pkgLabel, amount: received });
-      }
+      rows.push({ date: r.at, clientName: event.client_name, label: PAYMENT_ROW_LABEL[r.field][r.kind], pkg: pkgLabel, amount: r.amount });
     }
     for (const r of recognitions) {
       if (r.month !== selectedKey) continue;

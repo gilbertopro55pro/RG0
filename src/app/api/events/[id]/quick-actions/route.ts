@@ -19,6 +19,7 @@ import {
   receiptLegs,
   type QuickActionsData,
 } from "@/lib/eventQuickActions";
+import { legPayments } from "@/lib/paymentLog";
 import type { EventPaymentRow, InvoiceProvider } from "@/lib/types";
 
 type EventForActions = {
@@ -170,8 +171,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     eventType: event.event_type,
     payments: payment
       ? {
-          deposit: { amount: Number(payment.deposit_amount) || 0, paid: payment.deposit_paid, paidAmount: legDocState(payment, "deposit").paidAmount },
-          balance: { amount: Number(payment.balance_amount) || 0, paid: payment.balance_paid, paidAmount: legDocState(payment, "balance").paidAmount },
+          deposit: { amount: Number(payment.deposit_amount) || 0, paid: payment.deposit_paid, paidAmount: legDocState(payment, "deposit").paidAmount, received: legPayments(payment, "deposit") },
+          balance: { amount: Number(payment.balance_amount) || 0, paid: payment.balance_paid, paidAmount: legDocState(payment, "balance").paidAmount, received: legPayments(payment, "balance") },
         }
       : null,
     receipt: { connected: isInvoiceProviderConnected(photographer.invoice_provider, photographer), legs: receiptLegs(payment) },
