@@ -74,6 +74,8 @@ import GallerySlideshow from "@/components/GallerySlideshow";
 import FaceCircle from "@/components/FaceCircle";
 import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
+import AlbumCorrectionsPanel from "@/components/galleryManage/AlbumCorrectionsPanel";
+import { mergeCorrectionPages, openCorrections, orderCorrectionPages, type CorrectionPage } from "@/lib/albumCorrections";
 import PhotoCullingModal from "@/components/PhotoCullingModal";
 import RemoteUploadLine from "@/components/RemoteUploadLine";
 import { reportUnreadableDrop, useRemoteUploads } from "@/lib/remoteUploads";
@@ -569,6 +571,13 @@ export default function GalleryManageView({
   const [printHouseToast, setPrintHouseToast] = useState<string | null>(null);
   const [savingAlbumSize, setSavingAlbumSize] = useState(false);
   const [canvasEditorTarget, setCanvasEditorTarget] = useState<{ spreadId: string; mode: "overlay" | "custom" } | null>(null);
+  // The client's corrections beside the editor (galleryManage/AlbumCorrectionsPanel, admin for now):
+  // shown or hidden by its tab, and kept as it was while the photographer moves between pages.
+  // Open from the start when the link asks for the corrections (?corrections=1, the deep link below).
+  const [correctionsPanelOpen, setCorrectionsPanelOpen] = useState(
+    () => photographerEmail === ADMIN_EMAIL && searchParams.get("openAlbum") === "1" && searchParams.get("corrections") === "1"
+  );
+  const switchSpreadRef = useRef<((spreadId: string) => void) | null>(null);
   // The album editor's "עריכת תמונה" panel drag offset — owned HERE (not inside
   // AlbumSpreadCanvasEditor) specifically so it survives that editor's own full remount on every
   // page switch (key={spread.id} below) — per explicit request, once the photographer drags that
@@ -619,8 +628,17 @@ export default function GalleryManageView({
   // saw this pending intent, so by now orientation is already confirmed landscape (that's what
   // triggered the hand-off in the first place) — this just replays "open the tool" on this fresh
   // page instance, which is exactly the "opened directly into landscape" case that's always worked.
-  const [resumingAfterRotate, setResumingAfterRotate] = useState(false);
-  const pendingCanvasResumeRef = useRef<{ spreadId: string; mode: "overlay" | "custom" } | null>(null);
+  // The admin's corrections link (?openAlbum=1&corrections=1&spread=<id>, owner 2026-11-02) opens the
+  // editor on that page through this same resume, once the album's pages have loaded.
+  const correctionsLinkSpread = (() => {
+    if (photographerEmail !== ADMIN_EMAIL || searchParams.get("openAlbum") !== "1" || searchParams.get("corrections") !== "1") return null;
+    const id = searchParams.get("spread");
+    return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+  })();
+  const [resumingAfterRotate, setResumingAfterRotate] = useState(() => !!correctionsLinkSpread);
+  const pendingCanvasResumeRef = useRef<{ spreadId: string; mode: "overlay" | "custom" } | null>(
+    correctionsLinkSpread ? { spreadId: correctionsLinkSpread, mode: "custom" } : null
+  );
   // After an update's reload (lib/updateResume): reopen the album panel, and the page that was being
   // designed with its unsaved draft — through the same "resume" path the rotate round trip uses.
   const canvasDraftRef = useRef<AlbumCanvasDraft | null>(null);
@@ -649,6 +667,8 @@ export default function GalleryManageView({
 
   // Deep-link from the dashboard's album-design quick-access button (AlbumQuickAccessButton) —
   // ?openAlbum=1 auto-opens the panel the same way the tab button's onClick would.
+  // With ?corrections=1&spread=<id> (the admin's event card line and corrections page) it goes
+  // straight into the editor on that page, with the corrections beside it (correctionsLinkSpread).
   useEffect(() => {
     if (searchParams.get("openAlbum") !== "1") return;
     openAlbumManage();
@@ -656,7 +676,9 @@ export default function GalleryManageView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
   }, []);
   useEffect(() => {
-    if (!resumingAfterRotate || albumLoading) return;
+    // albumManageOpen: not before the album tool has opened and started loading (the corrections
+    // link starts out resuming, before anything loaded).
+    if (!resumingAfterRotate || albumLoading || !albumManageOpen) return;
     const pending = pendingCanvasResumeRef.current;
     if (pending) {
       pendingCanvasResumeRef.current = null;
@@ -664,7 +686,7 @@ export default function GalleryManageView({
       if (match) setCanvasEditorTarget({ spreadId: pending.spreadId, mode: pending.mode });
     }
     setResumingAfterRotate(false);
-  }, [resumingAfterRotate, albumLoading, albumSpreads]);
+  }, [resumingAfterRotate, albumLoading, albumSpreads, albumManageOpen]);
   const [albumTemplates, setAlbumTemplates] = useState<AlbumTemplateRow[]>([]);
   const [savingAlbum, setSavingAlbum] = useState(false);
   const [savingSlideshow, setSavingSlideshow] = useState(false);
@@ -1863,24 +1885,74 @@ export default function GalleryManageView({
   // The client's latest marked corrections (gallery_album_corrections, the client's "צריך תיקונים"),
   // linked from the status line while the album waits for them.
   const [albumCorrectionId, setAlbumCorrectionId] = useState<string | null>(null);
+  // The admin's (owner, 2026-11-02): every page the client sent since the design was last sent, for
+  // the panel beside the editor; and the corrections page stays linked after they're handled, to come
+  // back to them (it lists every round).
+  const isAdminAccount = photographerEmail === ADMIN_EMAIL;
+  const albumSentAt = (album as (GalleryAlbumRow & { sent_at?: string | null }) | null)?.sent_at ?? null;
+  const [openCorrectionRows, setOpenCorrectionRows] = useState<{ id: string; pages: CorrectionPage[]; created_at: string }[]>([]);
   useEffect(() => {
-    if (!album || album.status !== "changes_requested") return;
+    if (!album || (!isAdminAccount && album.status !== "changes_requested")) return;
     let cancelled = false;
-    supabase
-      .from("gallery_album_corrections")
-      .select("id")
-      .eq("album_id", album.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<{ id: string }>()
-      .then(({ data }) => {
-        if (!cancelled) setAlbumCorrectionId(data?.id ?? null);
-      });
+    const albumNow = album;
+    if (!isAdminAccount) {
+      supabase
+        .from("gallery_album_corrections")
+        .select("id")
+        .eq("album_id", albumNow.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ id: string }>()
+        .then(({ data }) => {
+          if (!cancelled) setAlbumCorrectionId(data?.id ?? null);
+        });
+    } else {
+      supabase
+        .from("gallery_album_corrections")
+        .select("id, pages, created_at")
+        .eq("album_id", albumNow.id)
+        .order("created_at", { ascending: false })
+        .limit(200)
+        .returns<{ id: string; pages: CorrectionPage[]; created_at: string }[]>()
+        .then(({ data }) => {
+          if (cancelled) return;
+          setAlbumCorrectionId(data?.[0]?.id ?? null);
+          setOpenCorrectionRows(openCorrections(data ?? [], { status: albumNow.status, sent_at: albumSentAt }));
+        });
+    }
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the album's id and status are what matter
-  }, [album?.id, album?.status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the album's id, status and last send are what matter
+  }, [album?.id, album?.status, albumSentAt]);
+  const correctionPages = useMemo(
+    () => orderCorrectionPages(mergeCorrectionPages(openCorrectionRows), albumSpreads.map((s) => s.id)),
+    [openCorrectionRows, albumSpreads]
+  );
+  const correctionsSentLine = openCorrectionRows.length
+    ? t("נשלחו ב-{date}", {
+        date: new Date(openCorrectionRows[openCorrectionRows.length - 1].created_at).toLocaleString(dateLocale(lang), {
+          day: "numeric",
+          month: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "Asia/Jerusalem",
+        }),
+      })
+    : null;
+  const showCorrectionsPanel = isAdminAccount && !!canvasEditorTarget && correctionPages.length > 0 && !albumNeedsRotate;
+  // On a computer the editor shrinks beside the panel; below 1024px the editor's card is sized in vw,
+  // so the panel goes over it instead.
+  const correctionsOnDesktop = albumViewportSize.w >= 1024;
+  const correctionsPanelWidth = correctionsOnDesktop
+    ? Math.round(Math.min(420, Math.max(300, albumViewportSize.w * 0.28)))
+    : Math.round(Math.min(340, albumViewportSize.w * 0.6));
+  const correctionsInset = showCorrectionsPanel && correctionsPanelOpen && correctionsOnDesktop ? correctionsPanelWidth : 0;
+  const openCorrectionsInEditor = () => {
+    if (!correctionPages.length) return;
+    setCorrectionsPanelOpen(true);
+    setCanvasEditorTarget({ spreadId: correctionPages[0].spreadId, mode: "custom" });
+  };
   const sendAlbumToClient = async () => {
     if (!album) return;
     setSavingAlbum(true);
@@ -4789,6 +4861,17 @@ export default function GalleryManageView({
           saving={savingSlideshow}
           onSave={saveSlideshow}
           onClose={() => setSlideshowManageOpen(false)}
+          roomy={photographerEmail === ADMIN_EMAIL}
+          onSelectMany={(ids, on) =>
+            setSlideshowPhotoIds((prev) => {
+              const next = new Set(prev);
+              for (const id of ids) {
+                if (on) next.add(id);
+                else next.delete(id);
+              }
+              return next;
+            })
+          }
         />
       )}
 
@@ -5271,6 +5354,23 @@ export default function GalleryManageView({
                             </Link>
                           </>
                         )}
+                        {isAdminAccount && correctionPages.length > 0 && (
+                          <>
+                            {" · "}
+                            <button onClick={openCorrectionsInEditor} className="underline font-bold">
+                              {t("לתיקון בעורך")}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
+                    {/* The client's corrections stay a click away after they're handled (admin). */}
+                    {isAdminAccount && album.status !== "changes_requested" && albumCorrectionId && (
+                      <>
+                        {" · "}
+                        <Link href={`/album-corrections/${albumCorrectionId}`} className="underline font-bold">
+                          {t("תיקונים מהלקוח")}
+                        </Link>
                       </>
                     )}
                   </div>
@@ -5687,9 +5787,29 @@ export default function GalleryManageView({
               draft={canvasDraftRef.current?.spreadId === spread.id ? canvasDraftRef.current : null}
               isAdmin={photographerEmail === ADMIN_EMAIL}
               bookSize={{ width_cm: album.width_cm, height_cm: album.height_cm }}
+              leftInsetPx={correctionsInset}
+              switchSpreadRef={switchSpreadRef}
             />
           );
         })()}
+      {showCorrectionsPanel && album && (
+        <AlbumCorrectionsPanel
+          open={correctionsPanelOpen}
+          onToggle={() => setCorrectionsPanelOpen((v) => !v)}
+          width={correctionsPanelWidth}
+          pages={correctionPages}
+          spreads={albumSpreads}
+          album={{ width_cm: album.width_cm, height_cm: album.height_cm }}
+          photos={albumToolPhotos}
+          customOrnaments={customOrnaments}
+          currentSpreadId={canvasEditorTarget?.spreadId ?? null}
+          onGoTo={(id) => {
+            if (switchSpreadRef.current) switchSpreadRef.current(id);
+            else setCanvasEditorTarget({ spreadId: id, mode: "custom" });
+          }}
+          sentLine={correctionsSentLine}
+        />
+      )}
 
       {shareOpen && (
         <div

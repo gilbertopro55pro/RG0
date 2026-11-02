@@ -24,12 +24,24 @@ import { designToolsAllowed } from "@/lib/designTools";
 import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
 import { eventQuoteHistoryId, type EventQuote } from "@/lib/eventQuote";
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
+import { ADMIN_EMAIL } from "@/lib/admin";
+import { mergeCorrectionPages, openCorrections, orderCorrectionPages, type CorrectionPage } from "@/lib/albumCorrections";
+
+// The album and its corrections, embedded in the gallery query for the admin's event card line
+// (owner, 2026-11-02): one round trip, as before.
+type GalleryAlbumCorrectionsEmbed = {
+  status: string;
+  sent_at: string | null;
+  spreads: { id: string; sort_order: number }[];
+  corrections: { id: string; pages: CorrectionPage[]; created_at: string }[];
+};
 
 export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
   const user = await getSessionUser();
   const serviceRole = createServiceRoleClient();
+  const isAdmin = user?.email === ADMIN_EMAIL;
 
   // The whole page in one round trip (it used to be up to six, one after another). The owner-only
   // queries start right away as well and are dropped below for a team member; RLS scopes each of
@@ -98,7 +110,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     supabase
       .from("galleries")
       .select(
-        "*, photo_count:gallery_photos!gallery_photos_gallery_id_fkey(count), cover:gallery_photos!galleries_cover_photo_fk(id, gallery_id, storage_path), first_photo:gallery_photos!gallery_photos_gallery_id_fkey(id, storage_path)"
+        "*, photo_count:gallery_photos!gallery_photos_gallery_id_fkey(count), cover:gallery_photos!galleries_cover_photo_fk(id, gallery_id, storage_path), first_photo:gallery_photos!gallery_photos_gallery_id_fkey(id, storage_path)" +
+          (isAdmin ? ", album:gallery_albums(status, sent_at, spreads:gallery_album_spreads(id, sort_order), corrections:gallery_album_corrections(id, pages, created_at))" : "")
       )
       .eq("event_id", id)
       .order("sort_order", { referencedTable: "first_photo", ascending: true, nullsFirst: false })
@@ -108,6 +121,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
           photo_count: { count: number }[];
           cover: Pick<GalleryPhotoRow, "id" | "gallery_id" | "storage_path"> | null;
           first_photo: Pick<GalleryPhotoRow, "id" | "storage_path">[];
+          album?: GalleryAlbumCorrectionsEmbed | GalleryAlbumCorrectionsEmbed[] | null;
         }
       >(),
     // The quote the event was booked from (owner, 2026-10-22): the lead that closed into it, with
@@ -175,6 +189,9 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   let galleryPhotoCount = 0;
   let galleryCoverUrl: string | null = null;
   let eventQuote: EventQuote | null = null;
+  // The client's corrections waiting in the album (admin, owner 2026-11-02): a line in the event's
+  // card that opens the editor on the first corrected page with the corrections beside it.
+  let albumCorrections: { pages: number[]; href: string } | null = null;
   if (isOwner) {
     if (quoteLead && (quoteLead.quote_details || quoteLead.quote_sent_at)) {
       eventQuote = {
@@ -193,8 +210,19 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     contract = contractRow;
 
     if (galleryRow) {
-      const { photo_count, cover, first_photo, ...galleryOnly } = galleryRow;
+      const { photo_count, cover, first_photo, album: albumEmbed, ...galleryOnly } = galleryRow;
       gallery = galleryOnly;
+      const albumRow = Array.isArray(albumEmbed) ? albumEmbed[0] : albumEmbed;
+      if (isAdmin && albumRow) {
+        const order = [...(albumRow.spreads ?? [])].sort((a, b) => a.sort_order - b.sort_order).map((sp) => sp.id);
+        const pages = orderCorrectionPages(mergeCorrectionPages(openCorrections(albumRow.corrections ?? [], albumRow)), order);
+        if (pages.length) {
+          albumCorrections = {
+            pages: pages.map((p) => p.number),
+            href: `/galleries/${galleryOnly.id}?openAlbum=1&corrections=1&spread=${pages[0].spreadId}`,
+          };
+        }
+      }
       galleryPhotoCount = photo_count[0]?.count ?? 0;
       const coverPhoto = cover && cover.gallery_id === galleryOnly.id ? cover : (first_photo[0] ?? null);
       if (coverPhoto) {
@@ -234,6 +262,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         senderName={senderName}
         clientMessageLang={clientMessageLang}
         canChooseClientLang={isOwner && canChooseClientLang(user!.email)}
+        albumCorrections={albumCorrections}
       />
     </div>
   );

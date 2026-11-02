@@ -1,7 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { correctedPageNumbers, parseCorrectionPages } from "@/lib/albumCorrections";
+import { correctedPageNumbers, mergeCorrectionPages, parseCorrectionPages, type CorrectionPage } from "@/lib/albumCorrections";
 import { clientChanges, outlineColorLabel, pageList, type ClientChanges, type OriginalPage } from "@/lib/albumClientEdit";
 import { sendPushToPhotographer } from "@/lib/push";
 import { sendEmail } from "@/lib/resend";
@@ -55,6 +55,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   const pages = parseCorrectionPages(body, spreadOrder);
   if (!pages) return NextResponse.json({ error: "בקשה לא חוקית" }, { status: 400 });
 
+  // What the client already sent in this round (since the design was last sent): these corrections
+  // add to them (owner, 2026-11-02), and the photographer is told so.
+  const sentAt = (album as GalleryAlbumRow & { sent_at?: string | null }).sent_at ?? null;
+  let earlier: { id: string; pages: CorrectionPage[]; created_at: string }[] = [];
+  if (album.status === "changes_requested") {
+    let q = supabase.from("gallery_album_corrections").select("id, pages, created_at").eq("album_id", album.id);
+    if (sentAt) q = q.gte("created_at", sentAt);
+    earlier = (await q.returns<typeof earlier>()).data ?? [];
+  }
+
   const { data: row, error } = await supabase
     .from("gallery_album_corrections")
     .insert({ album_id: album.id, gallery_id: gallery.id, photographer_id: gallery.photographer_id, pages })
@@ -69,22 +79,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (gallery.event_id) {
     await supabase.from("event_notifications").insert({
       event_id: gallery.event_id,
-      text: "הלקוח/ה סימנו תיקונים בעיצוב האלבום",
+      text: earlier.length ? "הלקוח/ה הוסיפו תיקונים בעיצוב האלבום" : "הלקוח/ה סימנו תיקונים בעיצוב האלבום",
       is_client_action: true,
     });
   }
 
   const pageNumbers = correctedPageNumbers(pages, spreadOrder);
+  const roundPages = earlier.length
+    ? correctedPageNumbers(
+        mergeCorrectionPages([...earlier, { id: row.id, pages, created_at: new Date().toISOString() }]).map((p) => ({ spreadId: p.spreadId, note: null, marks: [] })),
+        spreadOrder
+      )
+    : null;
   // Pages the client also changed themselves, and the photos' outline color if they changed it
   // (lib/albumClientEdit.ts), which stay as they left them.
   const changes = clientChanges(spreads ?? []);
-  after(() => notifyPhotographer(gallery, row.id, pageNumbers, changes).catch((e) => console.error("[album/corrections] notify failed", e)));
+  after(() => notifyPhotographer(gallery, row.id, pageNumbers, roundPages, changes).catch((e) => console.error("[album/corrections] notify failed", e)));
   return NextResponse.json({ ok: true });
 }
 
 // An email and a phone notification, in the photographer's language, with a short link to the marks.
-// Best-effort: the client's corrections are saved either way.
-async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pageNumbers: number[], changes: ClientChanges) {
+// Best-effort: the client's corrections are saved either way. `roundPages`: every page with
+// corrections in this round, when these add to corrections already sent (null: the first ones).
+async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pageNumbers: number[], roundPages: number[] | null, changes: ClientChanges) {
   const changedPages = changes.pages;
   const supabase = createServiceRoleClient();
   const [{ data: photographer }, { data: event }] = await Promise.all([
@@ -96,9 +113,12 @@ async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pag
   const t = makeT(messagesFor(photographerLang(photographer?.ui_lang)));
   const name = event?.client_name?.trim() || gallery.title?.trim() || t("האלבום");
   const path = `/album-corrections/${correctionId}`;
-  const title = t("יש תיקונים לביצוע באלבום {name}", { name });
   const cover = t("הכריכה");
-  const pagesLine = t("עמודים עם תיקונים: {pages}", { pages: pageList(pageNumbers, cover) });
+  const title = roundPages ? t("נוספו תיקונים לאלבום {name}", { name }) : t("יש תיקונים לביצוע באלבום {name}", { name });
+  const pagesLine = roundPages
+    ? t("תיקונים חדשים בעמודים: {pages}", { pages: pageList(pageNumbers, cover) })
+    : t("עמודים עם תיקונים: {pages}", { pages: pageList(pageNumbers, cover) });
+  const allLine = roundPages ? t("כל העמודים עם תיקונים: {pages}", { pages: pageList(roundPages, cover) }) : null;
   const color = changes.outline ? outlineColorLabel(changes.outline.color, t) : null;
   const outlineText = !changes.outline
     ? ""
@@ -120,8 +140,9 @@ async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pag
     subject: title,
     text:
       `${t("שלום {name},", { name: photographer.name ?? "" })}\n\n` +
-      `${t("{client} סימנו תיקונים בעיצוב האלבום.", { client: name })}\n` +
+      `${roundPages ? t("{client} הוסיפו תיקונים לתיקונים ששלחו קודם.", { client: name }) : t("{client} סימנו תיקונים בעיצוב האלבום.", { client: name })}\n` +
       `${pagesLine}\n` +
+      (allLine ? `${allLine}\n` : "") +
       (changedPages.length ? `${t("הם גם שינו בעצמם את העיצוב בעמודים: {pages}.", { pages: pageList(changedPages, cover) })}\n` : "") +
       (outlineText ? `${outlineText}\n` : "") +
       "\n" +

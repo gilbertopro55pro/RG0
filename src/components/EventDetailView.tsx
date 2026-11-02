@@ -6,6 +6,7 @@ import { fullPaymentPatch, legDocState, partialPaymentPatch } from "@/lib/eventQ
 import { legPayments, undoPaymentPatch, type PaymentLogEntry } from "@/lib/paymentLog";
 import ReceiptFlow from "@/components/ReceiptFlow";
 import Link from "next/link";
+import { pageList } from "@/lib/albumClientEdit";
 import MagnetApprovalChip from "@/components/magnetFrame/MagnetApprovalChip";
 import { magnetApprovalStatus, type MagnetApprovalFields } from "@/lib/magnetApproval";
 import dynamic from "next/dynamic";
@@ -226,6 +227,7 @@ export default function EventDetailView({
   senderName = null,
   canChooseClientLang = false,
   clientMessageLang = "he",
+  albumCorrections = null,
 }: {
   // clip_notes: selected with "*", outside EventRow (lib/clipNotes.ts).
   event: EventRow & Partial<ClipNotesFields>;
@@ -253,6 +255,9 @@ export default function EventDetailView({
   canChooseClientLang?: boolean;
   // The language of the WhatsApp updates to this client (clientLangFor on the server page).
   clientMessageLang?: Lang;
+  // The client's corrections waiting in the album (admin for now, owner 2026-11-02): their page
+  // numbers, and the link into the editor on the first one with the corrections beside it.
+  albumCorrections?: { pages: number[]; href: string } | null;
 }) {
   const router = useRouter();
   const t = useT();
@@ -1122,6 +1127,22 @@ export default function EventDetailView({
           </a>
         )}
       </div>
+
+      {isOwner && albumCorrections && (
+        <Link
+          href={albumCorrections.href}
+          className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 mb-5 text-sm"
+          style={{ background: "#FBEEEC", color: "var(--color-rose)" }}
+        >
+          <span className="min-w-0">
+            <span className="block font-semibold">{t("הלקוח ביקש תיקונים בעיצוב האלבום")}</span>
+            <span className="block text-xs">{t("עמודים עם תיקונים: {pages}", { pages: pageList(albumCorrections.pages, t("הכריכה")) })}</span>
+          </span>
+          <span className="shrink-0 font-semibold whitespace-nowrap">
+            {t("לתיקון בעורך")} <span className="inline-block ltr:rotate-180">←</span>
+          </span>
+        </Link>
+      )}
 
       {stageDescriptors.length > 0 && (
         <ProcessHero

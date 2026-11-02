@@ -2,7 +2,7 @@
 
 import { folderLabel } from "@/lib/galleryFolders";
 import { useResumeState } from "@/lib/updateResume";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { AlbumElement, AlbumFrame, AlbumOrnamentElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { TEXT_COLOR_PALETTE } from "@/lib/textColor";
@@ -2191,6 +2191,8 @@ export default function AlbumSpreadCanvasEditor({
   bookSize,
   poolIsSelection = false,
   markedFrames = [],
+  leftInsetPx = 0,
+  switchSpreadRef,
 }: {
   spread: GalleryAlbumSpreadRow;
   // Physical print dimensions plus the album's own configured safe-margin (cm) — used to size the
@@ -2254,6 +2256,14 @@ export default function AlbumSpreadCanvasEditor({
   // Frames a changed album selection filled or left empty, each with a red dot until this page is
   // saved (gallery_album_spreads.marked_frames). Drawn on screen only.
   markedFrames?: string[];
+  // Room kept free on the left edge for the client's corrections beside the editor
+  // (galleryManage/AlbumCorrectionsPanel, owner 2026-11-02): the editor shrinks into the rest of the
+  // screen, sliding with the panel, and comes back to its size when it closes. Desktop only (the
+  // parent passes 0 below 1024px, where the card is sized in vw and the panel goes over it).
+  leftInsetPx?: number;
+  // The page switch the corrections panel calls: this editor's own, so a changed page still asks
+  // to save before it goes (switchToSpread below).
+  switchSpreadRef?: { current: ((spreadId: string) => void) | null };
 }) {
   const t = useT();
   // This editor's whole layout below (two columns, canvas sizing, sidebar, page switcher) is the
@@ -4252,6 +4262,14 @@ export default function AlbumSpreadCanvasEditor({
     }
     onSwitchSpread(spreadId);
   };
+  // The latest switch for the corrections panel (it lives outside, in GalleryManageView).
+  useEffect(() => {
+    if (!switchSpreadRef) return;
+    switchSpreadRef.current = switchToSpread;
+    return () => {
+      if (switchSpreadRef.current === switchToSpread) switchSpreadRef.current = null;
+    };
+  });
 
   // Escape = the X button (handleCloseAttempt: closes straight away when nothing changed, otherwise
   // the save / discard / stay dialog) — per explicit request "מקש ESC מבצע סגירה של דף עיצוב חופשי
@@ -4345,7 +4363,17 @@ export default function AlbumSpreadCanvasEditor({
   return (
     <div
       className={`fixed inset-0 z-[80] flex items-center justify-center p-4 overflow-hidden ${ALBUM_FONT_CLASS_NAMES}`}
-      style={{ background: "rgba(28, 27, 25, 0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+      style={
+        {
+          background: "rgba(28, 27, 25, 0.55)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          // The corrections panel's room (leftInsetPx): the editor slides with the panel.
+          left: leftInsetPx,
+          transition: "left 300ms ease",
+          "--gf-editor-inset": `${leftInsetPx}px`,
+        } as CSSProperties
+      }
       // Right-click (and the page's own custom menu, if it ever grows one) does nothing here —
       // there's no editor context menu to show. Shift+right-click specifically forces the
       // browser/OS's OWN native menu open regardless of this handler — that's a deliberate
@@ -4698,7 +4726,7 @@ export default function AlbumSpreadCanvasEditor({
           }
         }
       `}</style>
-      <div className="gf-album-editor-card w-full max-w-sm lg:max-w-none lg:w-[95vw] lg:h-[92vh] rounded-3xl p-4 lg:px-6 lg:pt-2 lg:pb-4 bg-paper shadow-sheet max-h-[92vh] overflow-y-auto overscroll-contain lg:overflow-visible lg:flex lg:flex-row lg:gap-6">
+      <div className="gf-album-editor-card w-full max-w-sm lg:max-w-none lg:w-[calc(95vw-var(--gf-editor-inset,0px))] lg:transition-[width] lg:duration-300 lg:h-[92vh] rounded-3xl p-4 lg:px-6 lg:pt-2 lg:pb-4 bg-paper shadow-sheet max-h-[92vh] overflow-y-auto overscroll-contain lg:overflow-visible lg:flex lg:flex-row lg:gap-6">
         <div className="gf-album-editor-main flex-1 flex flex-col min-w-0 min-h-0">
         <div className="gf-album-header flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
