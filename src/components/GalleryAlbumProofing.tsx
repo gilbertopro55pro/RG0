@@ -1196,6 +1196,8 @@ export default function GalleryAlbumProofing({
       {!approved && !marking && currentStatus === "changes_requested" && (
         <div className="order-2 mx-4 mb-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-center bg-amber-bg text-amber-deep phone-landscape:mx-2">
           {justSent ? `✓ ${t("התיקונים נשלחו לצלם. העיצוב המעודכן יישלח אליכם שוב.")}` : t("שלחתם תיקונים לעיצוב. הצלם יעדכן אותו וישלח אליכם שוב.")}
+          {/* Sending more adds to what was sent (owner, 2026-11-02): the photographer sees them all. */}
+          <span className="block text-xs font-normal mt-0.5">{t("אפשר להוסיף עוד תיקונים, והם יתווספו לתיקונים ששלחתם.")}</span>
         </div>
       )}
       {selected && mode === "view" && (

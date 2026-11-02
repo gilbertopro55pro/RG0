@@ -3,6 +3,10 @@ import {
   CORRECTION_LIMITS,
   appendStrokePoint,
   correctedPageNumbers,
+  correctionRounds,
+  mergeCorrectionPages,
+  openCorrections,
+  orderCorrectionPages,
   marksViewBox,
   parseCorrectionPages,
   penPointsAttr,
@@ -100,5 +104,78 @@ describe("drawing helpers", () => {
 
   it("numbers the corrected pages in the album's order", () => {
     expect(correctedPageNumbers([{ spreadId: B, note: "x", marks: [] }], [A, B])).toEqual([2]);
+  });
+});
+
+describe("corrections sent in parts (owner, 2026-11-02)", () => {
+  const C = "33333333-3333-4333-8333-333333333333";
+  const red = { kind: "pen" as const, color: "#e5322d" as const, points: [[0.1, 0.1]] as [number, number][] };
+  const blue = { kind: "rect" as const, color: "#2563eb" as const, x: 0.1, y: 0.1, w: 0.2, h: 0.2 };
+  // The real case: 4 pages, and 3 minutes later one more page on its own.
+  const first = { id: "s1", created_at: "2026-11-02T17:34:48Z", pages: [
+    { spreadId: A, note: "להחליף בין התמונות", marks: [] },
+    { spreadId: B, note: "התמונה חתוכה", marks: [red] },
+  ] };
+  const second = { id: "s2", created_at: "2026-11-02T17:37:56Z", pages: [
+    { spreadId: C, note: "להזיז את הטקסט", marks: [blue] },
+    { spreadId: B, note: "גם להבהיר", marks: [blue] },
+  ] };
+
+  it("merges every page of every submission, the notes in order and the marks added up", () => {
+    const merged = mergeCorrectionPages([second, first]);
+    expect(merged.map((p) => p.spreadId)).toEqual([A, B, C]);
+    const b = merged.find((p) => p.spreadId === B)!;
+    expect(b.notes).toEqual([
+      { text: "התמונה חתוכה", at: first.created_at },
+      { text: "גם להבהיר", at: second.created_at },
+    ]);
+    expect(b.marks).toEqual([red, blue]);
+  });
+
+  it("counts the same note sent twice once, and drops a page left with nothing", () => {
+    const again = { id: "s3", created_at: "2026-11-02T18:00:00Z", pages: [{ spreadId: A, note: " להחליף בין התמונות ", marks: [] }] };
+    expect(mergeCorrectionPages([first, again]).find((p) => p.spreadId === A)!.notes).toHaveLength(1);
+    expect(mergeCorrectionPages([{ id: "x", created_at: "2026-11-02T18:00:00Z", pages: [{ spreadId: A, note: null, marks: [] }] }])).toEqual([]);
+  });
+
+  it("orders the pages as in the album, with their numbers, and leaves out a deleted page", () => {
+    const ordered = orderCorrectionPages(mergeCorrectionPages([first, second]), [C, "other", A]);
+    expect(ordered.map((p) => [p.spreadId, p.number])).toEqual([
+      [C, 1],
+      [A, 3],
+    ]);
+  });
+
+  it("keeps open only what came after the design was last sent, while the album asks for changes", () => {
+    const old = { id: "s0", created_at: "2026-11-01T19:14:26Z", pages: [] };
+    const album = { status: "changes_requested", sent_at: "2026-11-02T15:53:28Z" };
+    expect(openCorrections([second, old, first], album).map((s) => s.id)).toEqual(["s1", "s2"]);
+    expect(openCorrections([old, first], { status: "changes_requested", sent_at: null }).map((s) => s.id)).toEqual(["s0", "s1"]);
+    expect(openCorrections([first], { status: "sent", sent_at: "2026-11-02T15:53:28Z" })).toEqual([]);
+    expect(openCorrections([first], { status: "approved", sent_at: null })).toEqual([]);
+  });
+
+  it("groups every submission by the send it answers, newest round first", () => {
+    const a = { id: "a", created_at: "2026-10-30T10:00:00Z", pages: [] };
+    const b = { id: "b", created_at: "2026-11-01T19:14:26Z", pages: [] };
+    const c = { id: "c", created_at: "2026-11-01T19:15:55Z", pages: [] };
+    const album = { status: "changes_requested", sent_at: "2026-11-02T15:53:28Z" };
+    const rounds = correctionRounds([a, b, c, first, second], ["2026-11-01T10:00:00Z", "2026-11-02T15:53:28.600Z"], album);
+    expect(rounds.map((r) => [r.sentAt, r.submissions.map((s) => s.id), r.open])).toEqual([
+      ["2026-11-02T15:53:28Z", ["s1", "s2"], true],
+      ["2026-11-01T10:00:00Z", ["b", "c"], false],
+      [null, ["a"], false],
+    ]);
+  });
+
+  it("keeps everything still open in one round, even across a send the log has after it", () => {
+    const rounds = correctionRounds([first, second], ["2026-11-02T17:35:00Z"], { status: "changes_requested", sent_at: "2026-11-02T15:53:28Z" });
+    expect(rounds.map((r) => [r.submissions.map((s) => s.id), r.open])).toEqual([[["s1", "s2"], true]]);
+  });
+
+  it("has one open round for an album sent before the send times were kept", () => {
+    const rounds = correctionRounds([first, second], [], { status: "changes_requested", sent_at: null });
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0].open).toBe(true);
   });
 });

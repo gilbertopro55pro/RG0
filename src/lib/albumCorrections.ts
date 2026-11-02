@@ -148,3 +148,106 @@ export function rectFromCorners(a: [number, number], b: [number, number]): { x: 
 
 // Big enough to be a rectangle the client meant (a tap isn't one).
 export const MIN_RECT = 0.015;
+
+// --- Several submissions, one list (owner, 2026-11-02, "תיקון") ------------------------------------
+// The client sends corrections in parts: 4 pages, and a few minutes later one more page. Each
+// submission is its own row, and the photographer's page used to show only the one in the link (the
+// latest), so the earlier pages looked lost. A round is everything the client sent since the
+// photographer last sent the design (gallery_albums.sent_at, and the earlier sends in the event's
+// log); its pages are merged: every mark, and every note with its time.
+
+export type CorrectionSubmission = { id: string; pages: CorrectionPage[]; created_at: string };
+export type CorrectionNote = { text: string; at: string };
+export type MergedCorrectionPage = { spreadId: string; notes: CorrectionNote[]; marks: CorrectionMark[] };
+
+const ms = (iso: string | null | undefined): number | null => {
+  if (!iso) return null;
+  const v = Date.parse(iso);
+  return Number.isNaN(v) ? null : v;
+};
+
+const byTime = <T extends { created_at: string }>(list: readonly T[]): T[] => [...list].sort((a, b) => (ms(a.created_at) ?? 0) - (ms(b.created_at) ?? 0));
+
+// Every page of the submissions, oldest submission first: the marks added up, the notes in the order
+// they were written (the same note sent twice counts once).
+export function mergeCorrectionPages(submissions: readonly CorrectionSubmission[]): MergedCorrectionPage[] {
+  const out = new Map<string, MergedCorrectionPage>();
+  for (const sub of byTime(submissions)) {
+    for (const page of Array.isArray(sub.pages) ? sub.pages : []) {
+      if (!page || typeof page.spreadId !== "string") continue;
+      const merged = out.get(page.spreadId) ?? { spreadId: page.spreadId, notes: [], marks: [] };
+      const text = typeof page.note === "string" ? page.note.trim() : "";
+      if (text && !merged.notes.some((n) => n.text === text)) merged.notes.push({ text, at: sub.created_at });
+      if (Array.isArray(page.marks)) merged.marks.push(...page.marks);
+      out.set(page.spreadId, merged);
+    }
+  }
+  return [...out.values()].filter((p) => p.notes.length > 0 || p.marks.length > 0);
+}
+
+// The merged pages in the album's order, with their page number (1-based). A page deleted since is
+// left out: there's nothing to draw it on.
+export function orderCorrectionPages(pages: readonly MergedCorrectionPage[], spreadOrder: readonly string[]): (MergedCorrectionPage & { number: number })[] {
+  const index = new Map(spreadOrder.map((id, i) => [id, i]));
+  return pages
+    .flatMap((p) => {
+      const i = index.get(p.spreadId);
+      return i === undefined ? [] : [{ ...p, number: i + 1 }];
+    })
+    .sort((a, b) => a.number - b.number);
+}
+
+// sent_at is outside GalleryAlbumRow (lib/types.ts is part of the PDF worker's build): the pages select `*`.
+type AlbumRound = { status: string; sent_at?: string | null };
+
+// The corrections still waiting for the photographer: the album asks for changes, and they came after
+// the design was last sent (all of them for an album sent before sent_at was kept).
+export function openCorrections<T extends { created_at: string }>(submissions: readonly T[], album: AlbumRound): T[] {
+  if (album.status !== "changes_requested") return [];
+  const since = ms(album.sent_at);
+  return byTime(submissions).filter((s) => since === null || (ms(s.created_at) ?? 0) >= since);
+}
+
+export type CorrectionRound<T> = {
+  // The send this round answers (null: before any send that was recorded).
+  sentAt: string | null;
+  submissions: T[];
+  open: boolean;
+};
+
+// Every submission grouped by the send it answers, newest round first. `sendTimes` are when the
+// photographer sent the design to the client: the album's sent_at and the event log's earlier sends.
+export function correctionRounds<T extends { created_at: string }>(
+  submissions: readonly T[],
+  sendTimes: readonly (string | null | undefined)[],
+  album: AlbumRound
+): CorrectionRound<T>[] {
+  // The album's sent_at and the log line of the same send are a moment apart: one send.
+  const sends: string[] = [];
+  for (const s of [...sendTimes, album.sent_at].filter((v): v is string => ms(v) !== null).sort((a, b) => ms(a)! - ms(b)!)) {
+    if (!sends.length || ms(s)! - ms(sends[sends.length - 1])! > 10_000) sends.push(s);
+  }
+  const open = new Set(openCorrections(submissions, album));
+  const rounds = new Map<string, CorrectionRound<T>>();
+  for (const sub of byTime(submissions)) {
+    // Everything still open is one round, the one the editor's panel shows, whatever the log says.
+    if (open.has(sub)) {
+      const round = rounds.get("open") ?? { sentAt: album.sent_at ?? null, submissions: [], open: true };
+      round.submissions.push(sub);
+      rounds.set("open", round);
+      continue;
+    }
+    const at = ms(sub.created_at) ?? 0;
+    let sentAt: string | null = null;
+    for (const s of sends) if (ms(s)! <= at) sentAt = s;
+    const key = sentAt ?? "";
+    const round = rounds.get(key) ?? { sentAt, submissions: [], open: false };
+    round.submissions.push(sub);
+    rounds.set(key, round);
+  }
+  return [...rounds.values()].sort((a, b) => {
+    const la = ms(a.submissions[a.submissions.length - 1].created_at) ?? 0;
+    const lb = ms(b.submissions[b.submissions.length - 1].created_at) ?? 0;
+    return lb - la;
+  });
+}
