@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
-import { albumTextEffects, composePhotoTile, resolvePageElements, shadowLayerPng, svgTextLayer } from "@/lib/albumRaster";
+import { albumTextEffects, composePhotoTile, erodeAlpha, maskOutlineAlpha, resolvePageElements, shadowLayerPng, silhouetteShadowPng, svgTextLayer } from "@/lib/albumRaster";
 import type { AlbumTextElement, GalleryAlbumSpreadRow } from "@/lib/types";
 
 vi.mock("@/lib/storage", () => ({ downloadObjectBuffer: vi.fn(async () => null) }));
@@ -202,27 +202,65 @@ describe("svgTextLayer lines", () => {
   });
 });
 
-// A masked photo in the JPG export looks as in the editor (2026-11-01, found exporting the new
-// creative masks): the outline is the frame's, around the whole frame, and the shadow is only
-// outside the frame, so the cut-out parts show the page, not a gray rectangle.
-describe("a masked photo in the export", () => {
+// A masked photo's outline and shadow follow the mask's shape (2026-11-01, user request: the
+// outline was drawn around the rectangular frame), as in the editor and the PSD.
+describe("a masked photo's outline and shadow", () => {
   const photo = () => sharp({ create: { width: 400, height: 300, channels: 3, background: { r: 200, g: 30, b: 30 } } }).jpeg().toBuffer();
   const at = (tile: { data: Buffer; width: number }, x: number, y: number) => {
     const i = (y * tile.width + x) * 4;
     return { r: tile.data[i], g: tile.data[i + 1], b: tile.data[i + 2], a: tile.data[i + 3] };
   };
 
-  it("keeps the outline around the whole frame, and the mask shapes only the photo", async () => {
-    const tile = (await composePhotoTile(await photo(), 200, 120, 50, 50, undefined, true, { maskId: "shape-circle", borderWidth: 6, borderColor: "#000000" }))!;
-    expect(at(tile, 2, 2)).toMatchObject({ r: 0, g: 0, b: 0, a: 255 }); // the outline at the corner
-    expect(at(tile, 100, 2)).toMatchObject({ a: 255 }); // and along the top
-    expect(at(tile, 18, 18).a).toBe(0); // inside the frame, outside the circle: the page
-    const mid = at(tile, 100, 60);
-    expect(mid.a).toBe(255);
-    expect(mid.r).toBeGreaterThan(150); // the photo in the circle
+  it("erodes like feMorphology: a (2r+1) square, the edge counting as outside", () => {
+    const w = 9;
+    const h = 5;
+    const full = new Uint8Array(w * h).fill(255);
+    const e = erodeAlpha(full, w, h, 1);
+    expect(e[0]).toBe(0); // a corner touches the outside
+    expect(e[2 * w + 4]).toBe(255); // the middle stays
+    expect(e[1 * w + 1]).toBe(255); // one pixel in from the edge, with r = 1
+    expect(Array.from(erodeAlpha(full, w, h, 2)).filter((v) => v === 255).length).toBe(5 * 1); // only the center row's middle 5
+    const hole = new Uint8Array(w * h).fill(255);
+    hole[2 * w + 4] = 0;
+    const e2 = erodeAlpha(hole, w, h, 1);
+    expect(e2[2 * w + 5]).toBe(0);
+    expect(e2[1 * w + 3]).toBe(0);
+    expect(e2[2 * w + 6]).toBe(255);
   });
 
-  it("a photo without a mask is as before: outline and photo", async () => {
+  it("the outline is a band inside what the mask shows, and fades with a soft mask", () => {
+    const w = 10;
+    const m = new Uint8Array(w * w);
+    for (let y = 2; y < 8; y++) for (let x = 2; x < 8; x++) m[y * w + x] = 255;
+    const ring = maskOutlineAlpha(m, w, w, 1);
+    expect(ring[2 * w + 2]).toBe(255); // the square's edge
+    expect(ring[4 * w + 4]).toBe(0); // its inside
+    expect(ring[0]).toBe(0); // outside the mask: nothing
+    const soft = new Uint8Array(w * w).fill(128);
+    expect(maskOutlineAlpha(soft, w, w, 1)[0]).toBe(64); // along the frame's edge: (128/255)² of full
+    expect(maskOutlineAlpha(soft, w, w, 1)[5 * w + 5]).toBe(0); // and nothing inside it
+    // A fade across the frame (alpha falling by 25 per pixel): no gray band along it.
+    const fade = new Uint8Array(w * w);
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) fade[y * w + x] = 255 - x * 25;
+    expect(maskOutlineAlpha(fade, w, w, 1)[5 * w + 5]).toBe(2);
+  });
+
+  it("follows a circle mask, not the frame's rectangle", async () => {
+    const tile = (await composePhotoTile(await photo(), 200, 120, 50, 50, undefined, true, { maskId: "shape-circle", borderWidth: 6, borderColor: "#000000" }))!;
+    expect(at(tile, 2, 2).a).toBe(0); // the frame's corner: outside the circle, no outline
+    expect(at(tile, 100, 2).a).toBe(0); // nor along the frame's top
+    // shape-circle's top in a 120px-high frame, then just inside it: the outline, black.
+    let top = 0;
+    while (top < 60 && at(tile, 100, top).a < 128) top++;
+    const ring = at(tile, 100, top + 2);
+    expect(ring.a).toBeGreaterThan(200);
+    expect(ring.r).toBeLessThan(40);
+    const mid = at(tile, 100, 60); // the photo in the circle
+    expect(mid.a).toBe(255);
+    expect(mid.r).toBeGreaterThan(150);
+  });
+
+  it("a photo without a mask keeps its rectangular outline", async () => {
     const tile = (await composePhotoTile(await photo(), 200, 120, 50, 50, undefined, true, { borderWidth: 6, borderColor: "#000000" }))!;
     expect(at(tile, 2, 2)).toMatchObject({ r: 0, g: 0, b: 0, a: 255 });
     expect(at(tile, 18, 18)).toMatchObject({ a: 255 });
@@ -236,24 +274,20 @@ describe("a masked photo in the export", () => {
     return data[(y * info.width + x) * 4 + 3];
   }
 
-  it("the shadow of a masked photo is only outside its frame", async () => {
-    // A 200x120 frame at (100, 100), on a 600x400 page.
-    const full = (await shadowLayerPng(200, 120, 60, 100, 100, undefined, undefined, undefined, undefined, 600, 400))!;
-    const outside = (await shadowLayerPng(200, 120, 60, 100, 100, undefined, undefined, undefined, undefined, 600, 400, true))!;
-    expect(await alphaAt(full, 200, 160)).toBeGreaterThan(40); // under the frame, before
-    expect(await alphaAt(outside, 200, 160)).toBe(0); // not any more
-    expect(await alphaAt(outside, 120, 120)).toBe(0);
-    // Below and to the right of the frame, the shadow is as it was.
-    expect(await alphaAt(outside, 250, 226)).toBe(await alphaAt(full, 250, 226));
-    expect(await alphaAt(outside, 250, 226)).toBeGreaterThan(20);
+  it("the shadow is the photo's shape, not a rectangle", async () => {
+    // A 200x120 circle-masked tile at (100, 100) on a 600x400 page.
+    const tile = (await composePhotoTile(await photo(), 200, 120, 50, 50, undefined, true, { maskId: "shape-circle" }))!;
+    const shadow = (await silhouetteShadowPng(tile, 100, 100, 60, undefined, undefined, undefined, 600, 400))!;
+    expect(await alphaAt(shadow, 106, 106)).toBe(0); // the frame's corner, outside the circle
+    expect(await alphaAt(shadow, 200, 175)).toBeGreaterThan(40); // under the circle's bottom
+    const rect = (await shadowLayerPng(200, 120, 60, 100, 100, undefined, undefined, undefined, undefined, 600, 400))!;
+    expect(await alphaAt(rect, 106, 106)).toBeGreaterThan(20); // what the rectangle did
   });
 
-  it("a turned frame cuts its turned shape out of the shadow", async () => {
-    const outside = (await shadowLayerPng(200, 60, 60, 200, 170, 30, undefined, undefined, undefined, 600, 400, true))!;
-    // The frame's center (300, 200), and a point 80px along its long side, turned 30° clockwise.
-    expect(await alphaAt(outside, 300, 200)).toBe(0);
-    expect(await alphaAt(outside, Math.round(300 + 80 * Math.cos(Math.PI / 6)), Math.round(200 + 80 * Math.sin(Math.PI / 6)))).toBe(0);
-    // Off the turned frame, just below its center, the shadow shows.
-    expect(await alphaAt(outside, 300, 240)).toBeGreaterThan(10);
+  it("without a page it is placed around the tile, for the PDF", async () => {
+    const tile = (await composePhotoTile(await photo(), 100, 100, 50, 50, undefined, true, { maskId: "shape-circle" }))!;
+    const layer = (await silhouetteShadowPng(tile, 0, 0, 60, undefined, undefined, undefined, undefined, undefined, 2))!;
+    expect(layer.left).toBeLessThan(0);
+    expect(layer.width).toBeGreaterThan(100);
   });
 });

@@ -531,6 +531,82 @@ async function applyMaskToRaw(data: Buffer, width: number, height: number, maskI
     .toBuffer();
 }
 
+// The mask's own alpha at width×height, rasterized exactly as applyMaskToRaw does.
+async function maskAlphaRaw(maskId: string, width: number, height: number): Promise<Uint8Array | null> {
+  const mask = ALBUM_MASKS.find((m) => m.id === maskId);
+  if (!mask) return null;
+  const sized = mask.svg.replace("<svg ", `<svg width="${Math.round(width)}" height="${Math.round(height)}" `);
+  const alpha = await sharp(Buffer.from(sized)).ensureAlpha().extractChannel(3).raw().toBuffer();
+  return new Uint8Array(alpha.buffer, alpha.byteOffset, alpha.length);
+}
+
+// Minimum over a window of 2r+1, with nothing (0) beyond either end, along one line of `n` values
+// `stride` apart (van Herk–Gil-Werman: two passes over blocks of the window's length, so the cost
+// doesn't grow with r). g/hh are scratch, at least n long.
+function minLine(src: Uint8Array, dst: Uint8Array, start: number, stride: number, n: number, r: number, g: Uint8Array, hh: Uint8Array) {
+  const k = 2 * r + 1;
+  for (let i = 0; i < n; i++) {
+    const v = src[start + i * stride];
+    g[i] = i % k === 0 ? v : Math.min(g[i - 1], v);
+  }
+  for (let i = n - 1; i >= 0; i--) {
+    const v = src[start + i * stride];
+    hh[i] = i === n - 1 || (i + 1) % k === 0 ? v : Math.min(hh[i + 1], v);
+  }
+  for (let i = 0; i < n; i++) {
+    dst[start + i * stride] = i < r || i > n - 1 - r ? 0 : Math.min(hh[i - r], g[i + r]);
+  }
+}
+
+// Erosion by a (2r+1)-square, the frame's edge counting as outside: what SVG's
+// <feMorphology operator="erode" radius="r"> does, which draws this same outline in the editor.
+function erodeAlpha(alpha: Uint8Array, width: number, height: number, r: number): Uint8Array {
+  const tmp = new Uint8Array(width * height);
+  const out = new Uint8Array(width * height);
+  const n = Math.max(width, height);
+  const g = new Uint8Array(n);
+  const hh = new Uint8Array(n);
+  for (let y = 0; y < height; y++) minLine(alpha, tmp, y * width, 1, width, r, g, hh);
+  for (let x = 0; x < width; x++) minLine(tmp, out, x, width, height, r, g, hh);
+  return out;
+}
+
+// The outline of a masked photo follows the mask's shape (2026-11-01, user request: it was drawn
+// around the rectangular frame). It is the band `r` px wide inside everything the mask shows:
+// (alpha − eroded alpha)², the same arithmetic feComposite and gamma-2 alpha the editor's SVG
+// filter makes. A sharp edge gives 1 there. Along a soft edge (a fade, a vignette) the two barely
+// differ, and squaring leaves almost nothing, so a fade gets no gray band across the photo, only
+// the line along the frame's edges where it is solid (alpha × (1 − eroded) hazed the whole fade).
+function maskOutlineAlpha(maskAlpha: Uint8Array, width: number, height: number, r: number): Uint8Array {
+  const eroded = erodeAlpha(maskAlpha, width, height, Math.max(1, Math.round(r)));
+  const out = new Uint8Array(width * height);
+  for (let i = 0; i < out.length; i++) {
+    const d = maskAlpha[i] - eroded[i];
+    out[i] = d > 0 ? Math.round((d * d) / 255) : 0;
+  }
+  return out;
+}
+
+// Paints the mask-shaped outline over an already masked photo (raw RGBA).
+async function addMaskOutline(data: Buffer, width: number, height: number, maskId: string, borderWidth: number, color: string | undefined): Promise<Buffer> {
+  const maskAlpha = await maskAlphaRaw(maskId, width, height);
+  if (!maskAlpha) return data;
+  const ring = maskOutlineAlpha(maskAlpha, width, height, borderWidth);
+  const { r, g, b } = hexToRgb(color ?? "#ffffff");
+  const out = Buffer.from(data);
+  for (let i = 0, p = 0; i < ring.length; i++, p += 4) {
+    if (!ring[i]) continue;
+    const ra = ring[i] / 255;
+    const pa = (out[p + 3] / 255) * (1 - ra);
+    const oa = ra + pa;
+    out[p] = Math.round((r * ra + out[p] * pa) / oa);
+    out[p + 1] = Math.round((g * ra + out[p + 1] * pa) / oa);
+    out[p + 2] = Math.round((b * ra + out[p + 2] * pa) / oa);
+    out[p + 3] = Math.round(oa * 255);
+  }
+  return out;
+}
+
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const clean = hex.replace("#", "");
   const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
@@ -761,14 +837,12 @@ async function composePhotoTile(
   let w = width;
   let h = height;
 
-  // The mask first, then the outline: in the editor the outline is the frame's own (an inset
-  // box-shadow on the box), around the whole frame, and the mask only shapes the photo inside it.
-  // The PDF draws it the same way. (Until 2026-11-01 the mask cut the outline here too.)
   if (extra.maskId) {
+    // The mask shapes the photo, and the outline follows that shape (addMaskOutline), as in the
+    // editor. Until 2026-11-01 the outline was the frame's rectangle, cut by the mask.
     data = await applyMaskToRaw(data, w, h, extra.maskId);
-  }
-
-  if (extra.borderWidth) {
+    if (extra.borderWidth) data = await addMaskOutline(data, w, h, extra.maskId, extra.borderWidth, extra.borderColor);
+  } else if (extra.borderWidth) {
     const strokeSvg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect x="${extra.borderWidth / 2}" y="${extra.borderWidth / 2}" width="${w - extra.borderWidth}" height="${h - extra.borderWidth}" fill="none" stroke="${extra.borderColor ?? "#ffffff"}" stroke-width="${extra.borderWidth}"/></svg>`;
     data = await sharp(data, { raw: { width: w, height: h, channels: 4 } })
       .composite([{ input: Buffer.from(strokeSvg) }])
@@ -833,10 +907,7 @@ async function shadowLayerPng(
   blurPct?: number,
   angleDeg?: number,
   pageWidth?: number,
-  pageHeight?: number,
-  // Only outside the frame, like the editor's CSS box-shadow, which is never painted under its own
-  // box: a masked photo shows the page through its cut-out parts, not a gray rectangle.
-  outsideOnly?: boolean
+  pageHeight?: number
 ): Promise<{ buffer: Buffer; left: number; top: number } | null> {
   if (!shadowPct) return null;
   const blurPx = Math.max(1, ((blurPct ?? shadowPct) / 100) * 24);
@@ -866,13 +937,6 @@ async function shadowLayerPng(
   const centerY = frameY + height / 2;
   let left = Math.round(centerX + offsetX - canvasW / 2);
   let top = Math.round(centerY + offsetY - canvasH / 2);
-  if (outsideOnly) {
-    // The frame (turned with it) in this layer's own pixels: the layer sits shifted by the offset.
-    const cx = centerX - left;
-    const cy = centerY - top;
-    const hole = `<svg width="${canvasW}" height="${canvasH}" xmlns="http://www.w3.org/2000/svg"><rect x="${cx - width / 2}" y="${cy - height / 2}" width="${width}" height="${height}" fill="#000"${rotationDeg ? ` transform="rotate(${rotationDeg} ${cx} ${cy})"` : ""}/></svg>`;
-    buffer = await sharp(buffer).composite([{ input: Buffer.from(hole), blend: "dest-out" }]).png().toBuffer();
-  }
   const cropLeft = Math.max(0, -left);
   const cropTop = Math.max(0, -top);
   const cropRight = pageWidth != null ? Math.max(0, left + canvasW - pageWidth) : 0;
@@ -886,6 +950,64 @@ async function shadowLayerPng(
     top = Math.max(0, top);
   }
   return { buffer, left, top };
+}
+
+// The shadow of a masked photo follows its shape (2026-11-01), like the editor's CSS drop-shadow on
+// it and Photoshop's own drop shadow in the PSD: the finished tile's alpha (mask, outline and
+// opacity together, turned with the frame), blurred and offset with shadowLayerPng's own numbers.
+// A rectangle here showed a gray box through the cut-out parts of the photo.
+async function silhouetteShadowPng(
+  tile: { data: Buffer; width: number; height: number; left: number; top: number },
+  frameX: number,
+  frameY: number,
+  shadowPct: number | undefined,
+  distancePct?: number,
+  blurPct?: number,
+  angleDeg?: number,
+  pageWidth?: number,
+  pageHeight?: number,
+  // Pixels per unit of the shadow numbers: the PDF rasterizes at 2 px per point.
+  scale = 1
+): Promise<{ buffer: Buffer; left: number; top: number; width: number; height: number } | null> {
+  if (!shadowPct) return null;
+  const blurPx = Math.max(1, ((blurPct ?? shadowPct) / 100) * 24 * scale);
+  const offsetPx = ((distancePct ?? shadowPct) / 100) * 10 * scale;
+  const magnitude = offsetPx * Math.SQRT2;
+  const angleRad = ((angleDeg ?? 45) * Math.PI) / 180;
+  const offsetX = magnitude * Math.cos(angleRad);
+  const offsetY = magnitude * Math.sin(angleRad);
+  const alpha = 0.15 + (shadowPct / 100) * 0.45;
+  const pad = Math.ceil(blurPx * 3);
+  const canvasW = tile.width + pad * 2;
+  const canvasH = tile.height + pad * 2;
+  const raw = Buffer.alloc(canvasW * canvasH * 4);
+  for (let y = 0; y < tile.height; y++) {
+    for (let x = 0; x < tile.width; x++) {
+      const a = tile.data[(y * tile.width + x) * 4 + 3];
+      if (a) raw[((y + pad) * canvasW + x + pad) * 4 + 3] = Math.round(a * alpha);
+    }
+  }
+  let buffer = await sharp(raw, { raw: { width: canvasW, height: canvasH, channels: 4 } }).blur(blurPx).png().toBuffer();
+  let left = Math.round(frameX + tile.left + offsetX) - pad;
+  let top = Math.round(frameY + tile.top + offsetY) - pad;
+  let outW = canvasW;
+  let outH = canvasH;
+  // Cropped to the page only when there is one (the PDF places the layer itself).
+  const cropLeft = pageWidth != null ? Math.max(0, -left) : 0;
+  const cropTop = pageHeight != null ? Math.max(0, -top) : 0;
+  const cropRight = pageWidth != null ? Math.max(0, left + canvasW - pageWidth) : 0;
+  const cropBottom = pageHeight != null ? Math.max(0, top + canvasH - pageHeight) : 0;
+  if (cropLeft || cropTop || cropRight || cropBottom) {
+    const cropW = canvasW - cropLeft - cropRight;
+    const cropH = canvasH - cropTop - cropBottom;
+    if (cropW <= 0 || cropH <= 0) return null;
+    buffer = await sharp(buffer).extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH }).png().toBuffer();
+    left = Math.max(0, left);
+    top = Math.max(0, top);
+    outW = cropW;
+    outH = cropH;
+  }
+  return { buffer, left, top, width: outW, height: outH };
 }
 
 // Last-resort safety net, applied to the WHOLE composites array right before it's handed to
@@ -1102,7 +1224,9 @@ export async function renderAlbumPageJpeg({
       sharpness: el.sharpness,
     });
     if (!tile) continue;
-    const shadow = await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation, el.shadowDistance, el.shadowBlur, el.shadowAngle, pageWidthPx, pageHeightPx, !!el.maskId);
+    const shadow = el.maskId
+      ? await silhouetteShadowPng(tile, frameX, frameY, el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle, pageWidthPx, pageHeightPx)
+      : await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation, el.shadowDistance, el.shadowBlur, el.shadowAngle, pageWidthPx, pageHeightPx);
     if (shadow) composites.push({ input: shadow.buffer, left: shadow.left, top: shadow.top });
     composites.push({ input: tile.data, raw: { width: tile.width, height: tile.height, channels: 4 }, left: Math.round(frameX + tile.left), top: Math.round(frameY + tile.top) });
   }
@@ -1118,4 +1242,4 @@ export async function renderAlbumPageJpeg({
     .toBuffer();
 }
 
-export { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, albumTextEffects, shadowLayerPng, applyMaskToRaw, ornamentLayerRaw, composeShapeTile, hexToRgb };
+export { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, albumTextEffects, shadowLayerPng, silhouetteShadowPng, applyMaskToRaw, addMaskOutline, maskAlphaRaw, maskOutlineAlpha, erodeAlpha, ornamentLayerRaw, composeShapeTile, hexToRgb };

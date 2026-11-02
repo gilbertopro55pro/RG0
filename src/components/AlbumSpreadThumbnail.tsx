@@ -5,6 +5,7 @@ import type { GalleryAlbumSpreadRow } from "@/lib/types";
 import { boxShadowFor, cssFilterFor, computePhotoFraming, textEffectsCss, ALBUM_BLUR_MAX_PX, type PhotoWithUrl } from "@/lib/albumRender";
 import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
+import MaskedPhotoArt from "@/components/MaskedPhotoArt";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
 import { sharpenSvgFilter } from "@/lib/albumSharpen";
@@ -143,6 +144,8 @@ export default function AlbumSpreadThumbnail({
         }
         const photo = el.type === "photo" ? photos.find((p) => p.id === el.photoId) : null;
         const hasBorderShadow = el.type === "photo" || el.type === "ornament" || el.type === "shape";
+        // A masked photo draws its outline and shadow in the mask's shape (MaskedPhotoArt).
+        const maskedPhoto = el.type === "photo" && !!el.maskId && !!photo;
         // A turned text gets the editor's box height here, so the default origin is the same pivot
         // (the box's center) as in the editor and the exports, and shows what runs past it. Upright
         // text keeps its old auto height.
@@ -156,7 +159,7 @@ export default function AlbumSpreadThumbnail({
               top: `${el.yPct}%`,
               width: `${el.widthPct}%`,
               height: el.type === "text" ? (textTurn ? `${el.heightPct ?? 15}%` : undefined) : `${el.heightPct}%`,
-              overflow: textTurn ? "visible" : undefined,
+              overflow: textTurn || maskedPhoto ? "visible" : undefined,
               fontSize: el.type === "text" ? `${el.fontSize}px` : undefined,
               color: el.type === "text" ? el.color : undefined,
               textAlign: el.type === "text" ? el.align : undefined,
@@ -173,7 +176,7 @@ export default function AlbumSpreadThumbnail({
               // div below (see hasBorderShadow's own render further down), guaranteed to paint above
               // the image — same fix as AlbumSpreadCanvasEditor.tsx and the desktop app's
               // SpreadPreview.tsx.
-              boxShadow: hasBorderShadow
+              boxShadow: hasBorderShadow && !maskedPhoto
                 ? boxShadowFor(
                     el.shadow,
                     el.type === "photo" ? el.shadowDistance : undefined,
@@ -242,7 +245,7 @@ export default function AlbumSpreadThumbnail({
                 const frameAspect = ((el.widthPct * album.width_cm) / (el.heightPct * album.height_cm)) || 1;
                 const imgAspect = photoAspects[photo.id] ?? frameAspect;
                 const framing = computePhotoFraming(imgAspect, frameAspect, el.zoom ?? 100, el.focalX, el.focalY);
-                return (
+                const img = (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     src={resizedPhotoUrl(photo, 1200)}
@@ -263,22 +266,25 @@ export default function AlbumSpreadThumbnail({
                       maxHeight: "none",
                       filter: cssFilterFor(el.filter, el.blur, { id: el.id, adj: el }, el.sharpness),
                       opacity: (el.opacity ?? 100) / 100,
-                      ...(el.maskId
-                        ? {
-                            WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                            maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                            WebkitMaskSize: "100% 100%",
-                            maskSize: "100% 100%",
-                            WebkitMaskRepeat: "no-repeat",
-                            maskRepeat: "no-repeat",
-                          }
-                        : null),
                     }}
                   />
+                );
+                return el.maskId ? (
+                  <MaskedPhotoArt
+                    maskId={el.maskId}
+                    outlineWidth={el.borderWidth}
+                    outlineColor={el.borderColor}
+                    shadow={boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle)}
+                  >
+                    {img}
+                  </MaskedPhotoArt>
+                ) : (
+                  img
                 );
               })()}
             {el.type === "text" && <span style={{ whiteSpace: "pre-line" }}>{el.text}</span>}
             {hasBorderShadow &&
+              !maskedPhoto &&
               !(el.type === "shape" && (el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline")) &&
               !!el.borderWidth && (
                 <div

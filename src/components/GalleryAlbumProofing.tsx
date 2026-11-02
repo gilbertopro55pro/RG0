@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { ALBUM_BLUR_MAX_PX, computePhotoFraming } from "@/lib/albumRender";
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
+import MaskedPhotoArt from "@/components/MaskedPhotoArt";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsFilterId, adjustmentsSvgFilter, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import { sharpenFilterId, sharpenSvgFilter } from "@/lib/albumSharpen";
@@ -407,7 +408,9 @@ function ProofPage({
                 height: `${el.heightPct}%`,
                 // Drop shadow only — the border is a separate, later sibling below, so it paints
                 // above the photo (a full-bleed <img> child hides a parent's inset box-shadow).
-                boxShadow: thumb ? undefined : boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle),
+                // A masked photo draws its outline and shadow in the mask's shape (MaskedPhotoArt).
+                boxShadow: thumb || el.maskId ? undefined : boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle),
+                overflow: el.maskId ? "visible" : undefined,
                 // Rotation lives on this box (not the <img>) so the outline/box-shadow rotate with the
                 // clipped photo as one rigid tile — mirrors the builder.
                 transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
@@ -419,7 +422,7 @@ function ProofPage({
                 const frameAspect = (el.widthPct / el.heightPct) * pageAspect || 1;
                 const imgAspect = photoAspects[el.url] ?? el.aspect ?? frameAspect;
                 const framing = computePhotoFraming(imgAspect, frameAspect, el.zoom ?? 100, el.focalX, el.focalY);
-                return (
+                const img = (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     src={src(el.url)}
@@ -445,21 +448,23 @@ function ProofPage({
                       maxHeight: "none",
                       filter: cssFilterFor(el.filter, el.blur, { id: el.id, adj: el }, el.sharpness),
                       opacity: (el.opacity ?? 100) / 100,
-                      ...(el.maskId
-                        ? {
-                            WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                            maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                            WebkitMaskSize: "100% 100%",
-                            maskSize: "100% 100%",
-                            WebkitMaskRepeat: "no-repeat",
-                            maskRepeat: "no-repeat",
-                          }
-                        : null),
                     }}
                   />
                 );
+                return el.maskId ? (
+                  <MaskedPhotoArt
+                    maskId={el.maskId}
+                    outlineWidth={el.borderWidth ? (thumb ? 1 : el.borderWidth) : undefined}
+                    outlineColor={el.borderColor}
+                    shadow={thumb ? undefined : boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle)}
+                  >
+                    {img}
+                  </MaskedPhotoArt>
+                ) : (
+                  img
+                );
               })()}
-              {!!el.borderWidth && (
+              {!!el.borderWidth && !el.maskId && (
                 <div
                   className="absolute inset-0 pointer-events-none"
                   style={{ boxShadow: `inset 0 0 0 ${thumb ? 1 : el.borderWidth}px ${el.borderColor ?? "#fff"}` }}
