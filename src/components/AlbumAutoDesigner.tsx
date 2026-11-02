@@ -37,7 +37,7 @@ import {
 } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutOpener, layoutSpread } from "@/lib/albumAuto/layouts";
 import { catalogCover, catalogSpread, type CatalogType } from "@/lib/albumAuto/catalogLayout";
-import { fallbackQuotes, quoteFont, quoteSpreads } from "@/lib/albumAuto/catalogQuotes";
+import { fallbackQuotes, quoteFonts, quoteSpreads } from "@/lib/albumAuto/catalogQuotes";
 import { READ_ONLY_HEADER } from "@/lib/dataChanges";
 import { headSafeElements } from "@/lib/albumAuto/headSafe";
 import { bookElements, bookFadePage, bookPage } from "@/lib/albumAuto/bookLayout";
@@ -654,8 +654,10 @@ export default function AlbumAutoDesigner({
             let lastBookShape: string | null = null;
             // The faded pages in turn, so the faded photo's side alternates between them.
             let fadeTurn = 0;
-            // The catalog: the types used so far (none repeats right away, the special ones stay rare).
+            // The catalog: the types used so far (none repeats right away, the special ones stay rare),
+            // and a different face for each page's line.
             const catalogRecent: CatalogType[] = [];
+            const lineFonts = quoteFonts(quoteKeys.map((k) => catalogQuotes.get(k)));
             return plan.spreads.map((s, i) => {
               if (s.opener) {
                 // The combined album's opening page for its second event: its photo and its name.
@@ -673,7 +675,7 @@ export default function AlbumAutoDesigner({
                   widthCm: size.width,
                   heightCm: size.height,
                   title,
-                  titleFont: quoteFont(quoteKeys.indexOf(i)),
+                  titleFont: lineFonts[quoteKeys.indexOf(i)],
                   recent: catalogRecent,
                 });
                 if (cat) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CATALOG_QUOTES, cleanCustomQuote, fallbackQuotes, quoteFont, quoteSpreads, quotesFromPicks, tabQuoteTags } from "./catalogQuotes";
+import { CATALOG_QUOTES, LETTER_WIDTH, QUOTE_FONTS, cleanCustomQuote, fallbackQuotes, quoteFonts, quoteSpreads, quotesFromPicks, tabQuoteTags } from "./catalogQuotes";
+import { ALBUM_FONT_DEFS } from "@/lib/albumFontFiles";
 
 describe("the catalog's lines", () => {
   it("are very short English lines, each id once", () => {
@@ -85,9 +86,28 @@ describe("the catalog's lines", () => {
     expect(cleanCustomQuote(7)).toBeNull();
   });
 
-  it("change the handwriting from page to page", () => {
-    expect(new Set([0, 1, 2].map(quoteFont)).size).toBe(3);
-    expect(quoteFont(3)).toBe(quoteFont(0));
-    expect(quoteFont(-1)).toBeTruthy();
+  it("each take a different face, handwriting and lettering in turn, one that suits their subject", () => {
+    const lines = ["Nature is my happy place", "Draw your world", "Salt in the air, sand in my hair", "Stay wild", "Dream big", "My own words here", "Let the music play"];
+    const fonts = quoteFonts(lines);
+    expect(fonts).toHaveLength(lines.length);
+    expect(new Set(fonts).size).toBe(lines.length);
+    expect(fonts[0]).toBe("parisienne");
+    expect(fonts[1]).toBe("permanent-marker");
+    expect(fonts[2]).toBe("pacifico");
+    expect(["kalam", "bebas-neue", "lobster"]).toContain(fonts[3]);
+    const script = ["great-vibes", "pacifico", "parisienne", "dancing-script", "yellowtail", "satisfy", "cookie"];
+    fonts.forEach((f, i) => expect(script.includes(f), `${i} ${f}`).toBe(i % 2 === 0));
+    // A longer album than there are faces: every face of a kind before any comes back, never two in a row.
+    const many = quoteFonts(Array(30).fill("Dream big"));
+    expect(new Set(many.slice(0, 10)).size).toBe(10);
+    for (let i = 1; i < many.length; i++) expect(many[i]).not.toBe(many[i - 1]);
+  });
+
+  it("only use faces every export can draw, each with its letter width", () => {
+    const exportable = new Set(ALBUM_FONT_DEFS.filter((d) => d.category === "latin").map((d) => d.key));
+    for (const f of QUOTE_FONTS) {
+      expect(exportable.has(f), f).toBe(true);
+      expect(LETTER_WIDTH[f], f).toBeGreaterThan(0.3);
+    }
   });
 });

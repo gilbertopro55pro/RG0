@@ -1,4 +1,5 @@
 import type { AlbumElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement } from "@/lib/types";
+import { LETTER_WIDTH } from "./catalogQuotes";
 import type { CoverInput, LayoutInput, LayoutOutput, LayoutPhoto } from "./types";
 import { faceCropFocal, packPhotos } from "./layouts";
 
@@ -88,10 +89,6 @@ function shapeEl(id: string, r: Rect, g: G, color: string, extra: Partial<AlbumS
     ...extra,
   };
 }
-
-// A letter's average width in each title face, as a share of its size (measured on the lines of
-// catalogQuotes.ts in the browser: 0.31, 0.38, 0.43, with room to spare), so a line fills its box's width without running out of it.
-const LETTER_WIDTH: Record<string, number> = { "great-vibes": 0.36, "dancing-script": 0.44, pacifico: 0.5, "gveret-levin": 0.52 };
 
 // The spread's line (catalogQuotes.ts) or the cover's name: a handwritten face, as large as its box holds.
 function titleEl(id: string, text: string, r: Rect, g: G, color: string, align: "left" | "center" | "right" = "center", font?: string): AlbumTextElement {

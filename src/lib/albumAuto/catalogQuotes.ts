@@ -227,7 +227,65 @@ export function quotesFromPicks(
   return out;
 }
 
-// The handwriting of a page's line, in turn: an elegant script, a rounder one, a brush (the reference
-// mixes them). Sacramento was too thin to read at this size.
-const QUOTE_FONTS = ["great-vibes", "dancing-script", "pacifico"] as const;
-export const quoteFont = (n: number): string => QUOTE_FONTS[((n % QUOTE_FONTS.length) + QUOTE_FONTS.length) % QUOTE_FONTS.length];
+// The face of each page's line (owner, 2026-11-02: "not all the lines in the same font"): twelve
+// faces, as the reference book mixes them. Every other line is handwriting (calligraphy, a casual
+// script, a brush), the lines between are lettering (a marker, tall capitals, a bold display face),
+// so neighbouring lines never look alike. No face twice in an album until all of its kind have been
+// used, and one that suits the line's subject when there is one (a marker for street art, a breezy
+// script for the beach).
+const SCRIPT_FONTS = ["great-vibes", "pacifico", "parisienne", "dancing-script", "yellowtail", "satisfy", "cookie"] as const;
+const LETTERING_FONTS = ["permanent-marker", "bebas-neue", "abril-fatface", "lobster", "kalam"] as const;
+export const QUOTE_FONTS: readonly string[] = [...SCRIPT_FONTS, ...LETTERING_FONTS];
+
+const FONTS_BY_TAG: Partial<Record<QuoteTag, string[]>> = {
+  city: ["permanent-marker", "bebas-neue", "lobster"],
+  beach: ["pacifico", "yellowtail", "satisfy", "lobster"],
+  sunset: ["yellowtail", "satisfy", "great-vibes", "abril-fatface"],
+  nature: ["parisienne", "dancing-script", "great-vibes", "kalam"],
+  flowers: ["parisienne", "great-vibes", "dancing-script", "abril-fatface"],
+  music: ["lobster", "kalam", "pacifico"],
+  joy: ["cookie", "pacifico", "kalam", "lobster"],
+  freedom: ["bebas-neue", "yellowtail", "lobster"],
+  dream: ["great-vibes", "abril-fatface", "satisfy"],
+  light: ["great-vibes", "parisienne", "abril-fatface"],
+  travel: ["bebas-neue", "abril-fatface", "kalam"],
+  love: ["great-vibes", "parisienne", "satisfy", "abril-fatface"],
+  family: ["dancing-script", "parisienne", "kalam"],
+  pet: ["kalam", "cookie"],
+  magic: ["great-vibes", "parisienne", "abril-fatface"],
+  life: ["abril-fatface", "dancing-script", "cookie"],
+};
+
+const TAGS_BY_TEXT = new Map(CATALOG_QUOTES.map((q) => [q.text, q.tags]));
+
+// A face for each of an album's lines, in page order (a line of Claude's own has no subject).
+export function quoteFonts(lines: readonly (string | null | undefined)[]): string[] {
+  const used = new Set<string>();
+  return lines.map((line, n) => {
+    const kind: readonly string[] = n % 2 === 0 ? SCRIPT_FONTS : LETTERING_FONTS;
+    if (kind.every((f) => used.has(f))) for (const f of kind) used.delete(f);
+    const tags = (line && TAGS_BY_TEXT.get(line)) || [];
+    const suited = tags.flatMap((t) => FONTS_BY_TAG[t] ?? []).filter((f) => kind.includes(f));
+    const font = suited.find((f) => !used.has(f)) ?? kind.find((f) => !used.has(f)) ?? kind[0];
+    used.add(font);
+    return font;
+  });
+}
+
+// A letter's average width in each face, as a share of its size (measured in the browser on the
+// lines above, bold as the editor draws them, plus 15%), so a line fills its box without running out.
+export const LETTER_WIDTH: Record<string, number> = {
+  "great-vibes": 0.36,
+  parisienne: 0.44,
+  "dancing-script": 0.44,
+  satisfy: 0.45,
+  cookie: 0.35,
+  pacifico: 0.5,
+  yellowtail: 0.41,
+  lobster: 0.46,
+  "permanent-marker": 0.59,
+  kalam: 0.54,
+  "bebas-neue": 0.4,
+  "abril-fatface": 0.54,
+  "gveret-levin": 0.52,
+};
