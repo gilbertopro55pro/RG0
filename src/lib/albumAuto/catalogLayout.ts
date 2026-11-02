@@ -89,14 +89,19 @@ function shapeEl(id: string, r: Rect, g: G, color: string, extra: Partial<AlbumS
   };
 }
 
-// The spread's title (the place's name, at the first page of a tab): a handwritten face, large.
-function titleEl(id: string, text: string, r: Rect, g: G, color: string, align: "left" | "center" | "right" = "center"): AlbumTextElement {
+// A letter's average width in each title face, as a share of its size (measured on the lines of
+// catalogQuotes.ts in the browser: 0.31, 0.38, 0.43, with room to spare), so a line fills its box's width without running out of it.
+const LETTER_WIDTH: Record<string, number> = { "great-vibes": 0.36, "dancing-script": 0.44, pacifico: 0.5, "gveret-levin": 0.52 };
+
+// The spread's line (catalogQuotes.ts) or the cover's name: a handwritten face, as large as its box holds.
+function titleEl(id: string, text: string, r: Rect, g: G, color: string, align: "left" | "center" | "right" = "center", font?: string): AlbumTextElement {
   const hebrew = /[֐-׿]/.test(text);
   // fontSize is points on the 1600pt-wide reference of the whole spread: as high as the box allows,
   // and narrow enough for the whole name to fit its width on one line (a letter of these faces is
   // about half its size wide; a long name like "יעל ואיתי, חתונה" overflowed the cover's frame).
   const byHeight = ((r.h * 0.62) / g.W) * 1600;
-  const byWidth = ((r.w / g.W) * 1600) / (Math.max(1, [...text].length) * 0.52);
+  const family = font ?? (hebrew ? "gveret-levin" : "great-vibes");
+  const byWidth = ((r.w / g.W) * 1600) / (Math.max(1, [...text].length) * (LETTER_WIDTH[family] ?? 0.52));
   const fontSize = Math.round(Math.min(byHeight, byWidth));
   return {
     id,
@@ -109,7 +114,7 @@ function titleEl(id: string, text: string, r: Rect, g: G, color: string, align: 
     fontSize,
     color,
     align,
-    fontFamily: hebrew ? "gveret-levin" : "great-vibes",
+    fontFamily: family,
     shadow: color === "#ffffff" ? 45 : undefined,
   };
 }
@@ -166,7 +171,7 @@ function placeTitle(ctx: Ctx, els: AlbumElement[], boxes: Rect[], color: string)
     if (e.borderWidth) blocked.push(frame);
   }
   const box = boxes.find((b) => b.x >= 0 && b.x + b.w <= g.W + 1e-6 && !blocked.some((r) => overlaps(r, b)));
-  return box ? titleEl(`${ctx.prefix}-title`, ctx.title, box, g, color) : null;
+  return box ? titleEl(`${ctx.prefix}-title`, ctx.title, box, g, color, "center", ctx.titleFont) : null;
 }
 
 // The best main photo for a frame: its faces fit the zone, cut as little as possible, the closest
@@ -269,7 +274,8 @@ function fitIn(p: LayoutPhoto, region: Rect): Rect {
 
 type Built = { elements: AlbumElement[]; bleedIds: string[]; background?: LayoutOutput["background"] };
 
-type Ctx = { g: G; photos: LayoutPhoto[]; prefix: string; gap: number; title?: string; turn: number };
+// `title`: the page's line (a short English quote, catalogQuotes.ts), in `titleFont`.
+type Ctx = { g: G; photos: LayoutPhoto[]; prefix: string; gap: number; title?: string; titleFont?: string; turn: number };
 
 // Which page the main photo takes: the first photos read on the right in Hebrew; the side turns.
 const heroPageOf = (ctx: Ctx) => (ctx.turn % 2 === 0 ? 1 : 0);
@@ -407,7 +413,7 @@ function pageFramed(ctx: Ctx): Built | null {
   // The light page is a soft, blurred copy of the main photo (a bare white page looked empty).
   const els: AlbumElement[] = [{ ...photoEl(`${prefix}-hero`, heroPhoto, hp, g), focalX: hero.focalX, focalY: hero.focalY }];
   rest.forEach((p, i) => els.push(photoEl(`${prefix}-${i}`, p, rects[i], g, FRAMED)));
-  if (ctx.title) els.push(titleEl(`${prefix}-title`, ctx.title, { x: op.x + 0.08 * g.pageW, y: 0.05 * g.H, w: g.pageW * 0.84, h: 0.16 * g.H }, g, "#ffffff"));
+  if (ctx.title) els.push(titleEl(`${prefix}-title`, ctx.title, { x: op.x + 0.08 * g.pageW, y: 0.05 * g.H, w: g.pageW * 0.84, h: 0.16 * g.H }, g, "#ffffff", "center", ctx.titleFont));
   return { elements: els, bleedIds: [`${prefix}-hero`], background: { photoId: heroPhoto.id, blur: 70, opacity: 55 } };
 }
 
@@ -439,7 +445,7 @@ function panel(ctx: Ctx): Built | null {
     shapeEl(`${prefix}-panel`, panelRect, g, "#ffffff", { opacity: 42 }),
   ];
   rest.forEach((p, i) => els.push(photoEl(`${prefix}-${i}`, p, rects[i], g, { ...LINE, borderWidth: 3, shadow: 25 })));
-  if (ctx.title) els.push(titleEl(`${prefix}-title`, ctx.title, { x: px, y: g.H * 0.92 - textH, w: pw, h: textH }, g, "#ffffff"));
+  if (ctx.title) els.push(titleEl(`${prefix}-title`, ctx.title, { x: px, y: g.H * 0.92 - textH, w: pw, h: textH }, g, "#ffffff", "center", ctx.titleFont));
   return { elements: els, bleedIds: [`${prefix}-hero`, `${prefix}-panel`] };
 }
 
@@ -495,7 +501,7 @@ function panorama(ctx: Ctx): Built | null {
     const clear = !g.double || !facesOf(p).length || facesInside(p, frame, { x: 0, y: 0, w: mid - 0.02 * g.W, h: g.H }, c.focalX, c.focalY) || facesInside(p, frame, { x: mid + 0.02 * g.W, y: 0, w: mid - 0.02 * g.W, h: g.H }, c.focalX, c.focalY);
     if (clear) {
       const els: AlbumElement[] = [photoEl(`${prefix}-hero`, p, frame, g)];
-      if (ctx.title) els.push(titleEl(`${prefix}-title`, ctx.title, { x: 0.55 * g.W, y: 0.78 * g.H, w: 0.4 * g.W, h: 0.16 * g.H }, g, "#ffffff"));
+      if (ctx.title) els.push(titleEl(`${prefix}-title`, ctx.title, { x: 0.55 * g.W, y: 0.78 * g.H, w: 0.4 * g.W, h: 0.16 * g.H }, g, "#ffffff", "center", ctx.titleFont));
       return { elements: els, bleedIds: [`${prefix}-hero`] };
     }
   }
@@ -531,7 +537,7 @@ function framed(ctx: Ctx): Built | null {
     if (!rects) return null;
     grp.photos.forEach((p, i) => els.push(photoEl(`${prefix}-${p.id.slice(0, 8)}-${i}`, p, rects[i], g, FRAMED)));
   }
-  if (ctx.title) els.push(titleEl(`${prefix}-title`, ctx.title, { x: 0.1 * g.W, y: 0.05 * g.H, w: 0.8 * g.W, h: titleH }, g, "#ffffff"));
+  if (ctx.title) els.push(titleEl(`${prefix}-title`, ctx.title, { x: 0.1 * g.W, y: 0.05 * g.H, w: 0.8 * g.W, h: titleH }, g, "#ffffff", "center", ctx.titleFont));
   return { elements: els, bleedIds: [], background: { photoId: photos[0].id, blur: 70, opacity: 55 } };
 }
 
@@ -558,7 +564,7 @@ const SPECIALS: CatalogType[] = ["panel", "pairs", "hexagons", "page-framed"];
 // to the general composer). `type` tells which one was used (tests, the sketches). `recent`: the
 // types of the spreads before it, the latest last, so the special ones stay rare and none repeats
 // right away (two main-photo-across spreads in a row are fine, their sides alternate).
-export function catalogSpread(input: LayoutInput & { title?: string; recent?: CatalogType[] }): (LayoutOutput & { type: CatalogType }) | null {
+export function catalogSpread(input: LayoutInput & { title?: string; titleFont?: string; recent?: CatalogType[] }): (LayoutOutput & { type: CatalogType }) | null {
   const seen = new Set<string>();
   const photos = input.photos.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
   if (!photos.length) return null;
@@ -566,7 +572,7 @@ export function catalogSpread(input: LayoutInput & { title?: string; recent?: Ca
   const allowed = new Set<CatalogType>([...(CYCLES[photos.length] ?? ["hero-page", "hero-grid"]), "framed"]);
   const recent = input.recent ?? [];
   const turn = input.bookTurn ?? input.spreadIndex;
-  const ctx: Ctx = { g, photos, prefix: `auto-cat-${input.spreadIndex}`, gap: Math.max(0.2, 0.0045 * g.W), title: input.title, turn };
+  const ctx: Ctx = { g, photos, prefix: `auto-cat-${input.spreadIndex}`, gap: Math.max(0.2, 0.0045 * g.W), title: input.title, titleFont: input.titleFont, turn };
   const tooSoon = (t: CatalogType) => {
     const last = recent.lastIndexOf(t);
     if (last < 0) return false;

@@ -37,7 +37,8 @@ import {
 } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutOpener, layoutSpread } from "@/lib/albumAuto/layouts";
 import { catalogCover, catalogSpread, type CatalogType } from "@/lib/albumAuto/catalogLayout";
-import { subTabLabel } from "@/lib/portfolioNames";
+import { fallbackQuotes, quoteFont, quoteSpreads } from "@/lib/albumAuto/catalogQuotes";
+import { READ_ONLY_HEADER } from "@/lib/dataChanges";
 import { headSafeElements } from "@/lib/albumAuto/headSafe";
 import { bookElements, bookFadePage, bookPage } from "@/lib/albumAuto/bookLayout";
 import { AUTO_OUTLINE_DEFAULT, AUTO_OUTLINE_MAX, clampOutlineWidth, withAutoOutline, type AutoOutline } from "@/lib/albumAuto/outline";
@@ -585,6 +586,43 @@ export default function AlbumAutoDesigner({
       setProgress("layout", 0);
       await nextFrame();
       const aspectOf = new Map(autoPhotos.map((p) => [p.id, p.aspect]));
+      // The catalog's line on its pages (owner, 2026-11-02): a very short positive English quote that
+      // fits the page's photos, picked by Claude from their small copies (catalog-quotes); the tab's
+      // place decides while it answers, or if it can't.
+      const quoteKeys: number[] = [];
+      let catalogQuotes = new Map<number, string>();
+      if (style === "catalog" && !chosenTemplate) {
+        setProgress("layout", 0, t("בוחר משפט לכל עמוד"));
+        const tabNameOf = new Map(autoPhotos.map((p) => [p.id, p.tab?.name ?? null]));
+        const tabs = plan.spreads.map((s) => (s.opener ? null : (tabNameOf.get(s.photoIds[0]) ?? null)));
+        quoteKeys.push(...quoteSpreads(tabs).filter((i) => !plan.spreads[i].opener));
+        const req = quoteKeys.map((i) => {
+          const s = plan.spreads[i];
+          return { key: i, photoIds: [...new Set([s.heroId, ...s.photoIds].filter((id): id is string => !!id))].slice(0, 3), tab: tabs[i] };
+        });
+        catalogQuotes = fallbackQuotes(req);
+        if (req.length) {
+          try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 45_000);
+            const res = await fetch(`/api/galleries/${galleryId}/album/catalog-quotes`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", [READ_ONLY_HEADER]: "1" },
+              body: JSON.stringify({ spreads: req }),
+              signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (res.ok) {
+              const data = (await res.json()) as { quotes?: Record<string, string> };
+              const picked = new Map(Object.entries(data.quotes ?? {}).map(([k, v]) => [Number(k), String(v)] as const));
+              if (picked.size) catalogQuotes = picked;
+            }
+          } catch {
+            // The tab's lines stay.
+          }
+        }
+        checkCancel();
+      }
       const layoutPhoto = (id: string): LayoutPhoto => ({ id, aspect: aspectOf.get(id) ?? 1.5, faces: boxesByPhoto.get(id) });
       const spreads: AutoDesignResult["spreads"] = chosenTemplate
         ? // A saved book template: the photos in the planned book order (owners, family, event
@@ -616,11 +654,8 @@ export default function AlbumAutoDesigner({
             let lastBookShape: string | null = null;
             // The faded pages in turn, so the faded photo's side alternates between them.
             let fadeTurn = 0;
-            // The catalog: the types used so far (none repeats right away, the special ones stay
-            // rare), and the tabs already named on a page (a book's place, once, on its first page).
+            // The catalog: the types used so far (none repeats right away, the special ones stay rare).
             const catalogRecent: CatalogType[] = [];
-            const namedTabs = new Set<string>();
-            const tabNameOf = new Map(autoPhotos.map((p) => [p.id, p.tab?.name ?? null]));
             return plan.spreads.map((s, i) => {
               if (s.opener) {
                 // The combined album's opening page for its second event: its photo and its name.
@@ -628,8 +663,7 @@ export default function AlbumAutoDesigner({
                 return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...(out.background ? { background: out.background } : {}) };
               }
               if (style === "catalog") {
-                const tab = s.book ? tabNameOf.get(s.photoIds[0]) : null;
-                const title = tab && !namedTabs.has(tab) ? subTabLabel(tab) : undefined;
+                const title = catalogQuotes.get(i);
                 const cat = catalogSpread({
                   style,
                   photos: [...new Set(s.photoIds)].map(layoutPhoto),
@@ -639,12 +673,11 @@ export default function AlbumAutoDesigner({
                   widthCm: size.width,
                   heightCm: size.height,
                   title,
+                  titleFont: quoteFont(quoteKeys.indexOf(i)),
                   recent: catalogRecent,
                 });
                 if (cat) {
                   catalogRecent.push(cat.type);
-                  // A spread with no free place for the name (faces, frames) leaves it to the tab's next.
-                  if (tab && title && cat.elements.some((e) => e.type === "text")) namedTabs.add(tab);
                   return { elements: cat.elements, bleedIds: cat.bleedIds ?? [], ...(cat.background ? { background: cat.background } : {}) };
                 }
               }
