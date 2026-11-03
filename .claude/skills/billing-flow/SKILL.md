@@ -358,6 +358,25 @@ trial end**.
   - "QA מחיקה (אזהרה ראשונה)" will reach its final warning and deletion over the next cron runs;
     delete it by hand if that's no longer wanted.
 
+## Changing an account's plan: admin dashboard (since 2026-11-03)
+
+- **Where:** `/admin` › every account › "שינוי מסלול" (`AdminPlanChangeButton`, `POST /api/admin/plan`,
+  rules in `lib/adminPlanChange.ts`, unit-tested).
+- **Changes `plan` only.** Never touches PayPlus: a customer with a standing order keeps being charged
+  what that recurring charges. The renewal webhook keeps the DB plan (no `more_info_1` on a renewal).
+- **Refused:** a different billing cycle while a recurring renews (every renewal extends the period by the
+  PLAN's cycle, so a monthly charge on an annual plan would buy a year); an account with `pending_plan`;
+  the same plan. With no recurring (trial, cancelled, locked) any plan is allowed; a checkout later sets
+  the plan it pays for.
+- **What the customer is told is what is really charged** (`lib/billedAmount.ts`, `lib/recurringCharges.ts`):
+  the last charged callback of the recurring on file (`payload.transaction.amount`, matched on
+  `recurring_charge_information.recurring_uid`, case-insensitive: the column is a uuid). Used by the
+  renewal reminder (cron step 2), Settings › Subscription and the dashboard. Falls back to the plan price.
+  - Found on the way: `78a97d91` renews at ₪50 (a recurring from before the price went up) and was told
+    ₪59 in the reminder email and in Settings. Now ₪50.
+- **First use (2026-11-03, owner's decision):** `146ad19b` (rudyaz) paid a new checkout today, ₪59 פרו
+  monthly (recurring `nEUrv`, through 3.12); moved to פרו+ monthly, still paying ₪59.
+
 ## Deleting an account by hand: admin dashboard (since 2026-10-23)
 
 - **Where:** `/admin` › "כל הצלמים", a "מחיקת חשבון" button on every account except the admin's

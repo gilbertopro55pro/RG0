@@ -5,6 +5,7 @@ import { isInTrial, trialDaysLeft, renewalPaymentDue, RENEWAL_PAYMENT_DAYS_BEFOR
 import { useState } from "react";
 import Link from "next/link";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
+import { billedPerMonth } from "@/lib/billedAmount";
 import type { Photographer, SubscriptionStatus } from "@/lib/types";
 import ToneTag from "@/components/ToneTag";
 import { subscriptionStatusTone } from "@/lib/statusTones";
@@ -28,7 +29,7 @@ function computePeriodEnd(photographer: Photographer): Date {
   return new Date(start.getFullYear(), start.getMonth() + SUBSCRIPTION_PLANS[photographer.plan].cycleMonths, start.getDate());
 }
 
-export default function BillingSettings({ photographer }: { photographer: Photographer }) {
+export default function BillingSettings({ photographer, recurringAmount = null }: { photographer: Photographer; recurringAmount?: number | null }) {
   const t = useT();
   const lang = useLang();
   const [status, setStatus] = useState(photographer.subscription_status);
@@ -146,7 +147,7 @@ export default function BillingSettings({ photographer }: { photographer: Photog
       </div>
       <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 mb-2" style={{ background: "var(--color-chip)" }}>
         <span>
-          {t("מסלול {plan}, ₪{price}/חודש", { plan: t(plan.label), price: plan.pricePerMonth })}
+          {t("מסלול {plan}, ₪{price}/חודש", { plan: t(plan.label), price: billedPerMonth(photographer.plan, recurringAmount) })}
         </span>
         <ToneTag tone={subscriptionStatusTone(status)} className="shrink-0" legacyStyle={{ color: isActive ? "var(--color-sage)" : "var(--color-rose)", fontWeight: 600 }}>
           {t(STATUS_LABELS[status])}
