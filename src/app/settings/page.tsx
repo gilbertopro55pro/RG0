@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/supabase/sessionUser";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { recurringAmounts } from "@/lib/recurringCharges";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import type { ClientMessageTemplateRow, ContractTemplateRow, CustomPackageRow, CustomPackageStageRow, EventTypeRow, PackagePriceRow, Photographer, PriceQuoteRow, PriceQuoteTemplateRow, PrintHouseEmailRow, TeamMember } from "@/lib/types";
@@ -101,6 +103,13 @@ export default async function SettingsPage({
   if (!hasAppAccess(photographer)) redirect("/billing");
 
   const intakeUsedThisMonth = intakeUsage?.used ?? 0;
+
+  // What the standing order really charges, shown next to the plan (an admin plan change or an older
+  // price can make it differ from the plan's list price). Only paying accounts need the lookup.
+  const recurringAmount =
+    photographer.payplus_recurring_uid && !photographer.cancel_at_period_end
+      ? ((await recurringAmounts(createServiceRoleClient(), [photographer])).get(photographer.id) ?? null)
+      : null;
 
   const t = await getT();
 
@@ -236,7 +245,7 @@ export default async function SettingsPage({
             label: t("מנוי וצוות"),
             content: (
               <>
-                <BillingSettings photographer={photographer} />
+                <BillingSettings photographer={photographer} recurringAmount={recurringAmount} />
                 <div className="mt-5">
                   <StorageUsageSettings
                     usedBytes={Number(storageBytes ?? 0)}

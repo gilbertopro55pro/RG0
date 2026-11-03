@@ -10,6 +10,8 @@ import { alertBillingAdmin } from "@/lib/billingAlerts";
 import { photographerLang } from "@/lib/clientLang";
 import { nextDunningStage, dunningLockDate, UPCOMING_DAYS_BEFORE, type DunningFields } from "@/lib/dunning";
 import { dunningEmail, planSwitchEmail, renewalReminderEmail, trialDeletionFinalWarningEmail, trialDeletionWarningEmail, trialEndingEmail } from "@/lib/billingEmails";
+import { recurringAmounts } from "@/lib/recurringCharges";
+import { billedCycleAmount } from "@/lib/billedAmount";
 import { deleteExpiredTrialAccount, isTrialDeletionCandidate, trialDeletionDate, TRIAL_RETENTION_DAYS, WARN_DAYS_BEFORE } from "@/lib/accountDeletion";
 
 // The public site, for every link this cron puts in an email or hands to PayPlus. Not the request's
@@ -67,6 +69,9 @@ export async function GET(request: NextRequest) {
     .gt("current_period_end", now.toISOString())
     .returns<Photographer[]>();
 
+  // The amount a renewal really charges is the standing order's own (its last charge): an admin
+  // plan change or an older price leaves it different from the plan's list price.
+  const reminderAmounts = await recurringAmounts(supabase, dueForReminder ?? []);
   let remindedCount = 0;
   for (const photographer of dueForReminder ?? []) {
     const reminderDays =
@@ -75,7 +80,7 @@ export async function GET(request: NextRequest) {
     if (new Date(photographer.current_period_end!) > reminderCutoff) continue;
 
     const planInfo = SUBSCRIPTION_PLANS[photographer.plan];
-    const amount = PAYPLUS_BILLING[photographer.plan].amount;
+    const amount = billedCycleAmount(photographer.plan, reminderAmounts.get(photographer.id) ?? null);
     try {
       await sendEmail({
         to: notificationEmailFor(photographer.email),

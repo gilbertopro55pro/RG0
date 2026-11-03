@@ -3,11 +3,14 @@ import type { AdminPhotographerRow } from "@/app/admin/page";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import AdminPaymentLocks from "@/components/AdminPaymentLocks";
 import AdminDeleteAccountButton from "@/components/AdminDeleteAccountButton";
+import AdminPlanChangeButton from "@/components/AdminPlanChangeButton";
+import { planCycleAmount } from "@/lib/billedAmount";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import ToneTag from "@/components/ToneTag";
 import { subscriptionStatusTone } from "@/lib/statusTones";
 import { getT, getLang } from "@/i18n/server";
 import { dateLocale } from "@/i18n/config";
+import type { TFn } from "@/i18n/translate";
 
 const STATUS_LABELS: Record<string, string> = {
   active: "פעיל",
@@ -33,6 +36,15 @@ function StatTile({ label, value, sub }: { label: string; value: string | number
       {sub && <div className="text-xs mt-1 text-ink-soft">{sub}</div>}
     </div>
   );
+}
+
+// "פרו+ · חודשי · משלם ₪59" when the standing order charges something other than the plan's price
+// (an admin plan change, or a recurring created before a price change).
+function planText(p: AdminPhotographerRow, t: TFn): string {
+  const label = t(SUBSCRIPTION_PLANS[p.plan].label);
+  const renews = p.has_recurring && !p.cancel_at_period_end;
+  if (!renews || p.recurring_amount == null || p.recurring_amount === planCycleAmount(p.plan)) return label;
+  return t("{plan} · משלם ₪{amount}", { plan: label, amount: p.recurring_amount });
 }
 
 export default async function AdminDashboardView({ photographers }: { photographers: AdminPhotographerRow[] }) {
@@ -112,11 +124,12 @@ export default async function AdminDashboardView({ photographers }: { photograph
                 </div>
                 <div className="text-xs text-ink-soft break-all mb-1">{p.email}</div>
                 <div className="flex items-center justify-between text-xs text-ink-soft">
-                  <span>{t("מסלול {plan}", { plan: t(SUBSCRIPTION_PLANS[p.plan].label) })}</span>
+                  <span>{t("מסלול {plan}", { plan: planText(p, t) })}</span>
                   <span className="font-data">{new Date(p.created_at).toLocaleDateString(loc)}</span>
                 </div>
                 {p.email !== ADMIN_EMAIL && (
-                  <div className="flex justify-end mt-2">
+                  <div className="flex justify-end gap-2 mt-2">
+                    <AdminPlanChangeButton row={p} compact />
                     <AdminDeleteAccountButton id={p.id} name={p.name} compact />
                   </div>
                 )}
@@ -144,7 +157,7 @@ export default async function AdminDashboardView({ photographers }: { photograph
                   <tr key={p.id} className="border-b border-line last:border-0">
                     <td className="py-2">{p.name}</td>
                     <td className="py-2 text-ink-soft">{p.email}</td>
-                    <td className="py-2">{t(SUBSCRIPTION_PLANS[p.plan].label)}</td>
+                    <td className="py-2">{planText(p, t)}</td>
                     <td className="py-2">
                       <ToneTag
                         tone={subscriptionStatusTone(p.subscription_status)}
@@ -154,7 +167,14 @@ export default async function AdminDashboardView({ photographers }: { photograph
                       </ToneTag>
                     </td>
                     <td className="py-2 text-ink-soft">{new Date(p.created_at).toLocaleDateString(loc)}</td>
-                    <td className="py-2 text-end">{p.email !== ADMIN_EMAIL && <AdminDeleteAccountButton id={p.id} name={p.name} compact />}</td>
+                    <td className="py-2 text-end">
+                      {p.email !== ADMIN_EMAIL && (
+                        <div className="flex justify-end gap-2">
+                          <AdminPlanChangeButton row={p} compact />
+                          <AdminDeleteAccountButton id={p.id} name={p.name} compact />
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
