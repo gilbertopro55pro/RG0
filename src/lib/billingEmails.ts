@@ -24,11 +24,25 @@ export function renewalReminderEmail(lang: Lang, p: { name: string; planLabel: s
 
 export function planSwitchEmail(
   lang: Lang,
-  p: { name: string; targetLabel: string; targetAmount: number; targetPricePerMonth: number; wasOnLongCycle: boolean; paymentLink: string },
+  p: {
+    name: string;
+    targetLabel: string;
+    targetAmount: number;
+    targetPricePerMonth: number;
+    wasOnLongCycle: boolean;
+    paymentLink: string;
+    /** A price change the admin made (admin dashboard), not a switch the customer asked for. */
+    priceChange?: { periodEnd: string };
+  },
 ): Email {
   const t = makeT(messagesFor(lang));
   const plan = t(p.targetLabel);
-  const reason = p.wasOnLongCycle
+  const reason = p.priceChange
+    ? t(
+        "החל מהמחזור הבא, המנוי שלך במסלול {plan} יהיה בסך ₪{amount} לחודש. הוראת הקבע הקודמת הסתיימה, ולכן כדי שהמנוי ימשיך בלי הפסקה, נשמח שתשלימו את התשלום בקישור עד {date}.",
+        { plan, amount: p.targetAmount, date: new Date(p.priceChange.periodEnd).toLocaleDateString(dateLocale(lang), { timeZone: "Asia/Jerusalem" }) },
+      )
+    : p.wasOnLongCycle
     ? t(
         "זהו החיוב עבור החודשים ה-11 וה-12 של תקופת המנוי הקודמת שלך, בעקבות המעבר למסלול {plan} שביקשת, במקום שיהיו חינמיים כמו במסלול הקודם. החל מהמחזור שאחרי כן תחויב/י ₪{price} מדי חודש כמסלול {plan} רגיל.",
         { plan, price: p.targetPricePerMonth },

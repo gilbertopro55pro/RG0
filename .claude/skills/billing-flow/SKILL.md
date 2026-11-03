@@ -361,13 +361,23 @@ trial end**.
 ## Changing an account's plan: admin dashboard (since 2026-11-03)
 
 - **Where:** `/admin` › every account › "שינוי מסלול" (`AdminPlanChangeButton`, `POST /api/admin/plan`,
-  rules in `lib/adminPlanChange.ts`, unit-tested).
-- **Changes `plan` only.** Never touches PayPlus: a customer with a standing order keeps being charged
-  what that recurring charges. The renewal webhook keeps the DB plan (no `more_info_1` on a renewal).
+  rules in `lib/adminPlanChange.ts`, unit-tested). Two steps: the plan and "change the charge too?",
+  then a summary with "כן, לבצע את השינוי" (the owner asked for a double confirmation).
+- **The plan changes right away** either way.
+- **Keep the charge:** PayPlus is never touched; the recurring keeps charging what it charges. The renewal
+  webhook keeps the DB plan (no `more_info_1` on a renewal).
+- **Change the charge:** the customer's own switch mechanism, with `pending_plan = plan` (that equality marks
+  an admin price change): the cron (step 3) cancels the recurring `MONTHLY_SWITCH_LEAD_DAYS` (2) before the
+  renewal and emails a checkout link for the plan's price (`planSwitchEmail` with `priceChange`), and marks
+  `dunning_stage` 1 so the "upcoming" dunning email doesn't go out the same morning. Unpaid: due on the
+  period end, locked 7 days later (dunning). Monthly recurrings only, at least 3 days before the renewal.
+  The customer can't cancel it (`switch-plan` cancel returns 409); the admin can, from the same dialog.
+- **Fixed on the way (also for customers' own switches):** a monthly switch was due 1 day before the period
+  end. Renewals are charged ~01:30–02:00 UTC on the renewal date and the cron runs at 07:00 UTC, so a period
+  ending after 07:00 UTC got its cancel on the renewal day, after the old price was charged. Now 2 days.
 - **Refused:** a different billing cycle while a recurring renews (every renewal extends the period by the
-  PLAN's cycle, so a monthly charge on an annual plan would buy a year); an account with `pending_plan`;
-  the same plan. With no recurring (trial, cancelled, locked) any plan is allowed; a checkout later sets
-  the plan it pays for.
+  PLAN's cycle, so a monthly charge on an annual plan would buy a year); any scheduled switch; the same plan
+  with the same charge. With no recurring (trial, cancelled, locked) any plan, no billing question.
 - **What the customer is told is what is really charged** (`lib/billedAmount.ts`, `lib/recurringCharges.ts`):
   the last charged callback of the recurring on file (`payload.transaction.amount`, matched on
   `recurring_charge_information.recurring_uid`, case-insensitive: the column is a uuid). Used by the
@@ -376,6 +386,8 @@ trial end**.
     ₪59 in the reminder email and in Settings. Now ₪50.
 - **First use (2026-11-03, owner's decision):** `146ad19b` (rudyaz) paid a new checkout today, ₪59 פרו
   monthly (recurring `nEUrv`, through 3.12); moved to פרו+ monthly, still paying ₪59.
+- **Not verified against PayPlus:** no recurring has been cancelled from the code yet; the first admin price
+  change (or customer switch) is the test. A failed cancel emails the admin.
 
 ## Deleting an account by hand: admin dashboard (since 2026-10-23)
 

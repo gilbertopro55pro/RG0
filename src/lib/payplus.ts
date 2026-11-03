@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
-import { addBillingMonths } from "@/lib/billingDates";
+import { addBillingMonths, monthlySwitchDate } from "@/lib/billingDates";
 
 const API_BASE = "https://restapi.payplus.co.il/api/v1.0";
 
@@ -156,18 +156,15 @@ export function verifyPayplusWebhookSignature(rawBody: string, hashHeader: strin
 // A plan switch never takes effect immediately — see migration 0073's comment for why. The
 // target date is always derived from the CURRENT plan's already-paid-through date
 // (current_period_end), never "now": switching off a monthly plan finishes out whatever month is
-// already paid for and the very next scheduled charge becomes the new plan's instead (one day's
-// buffer before that renewal, so our cancellation is guaranteed to land before PayPlus's own
-// scheduled charge fires — otherwise the old monthly recurring could still auto-charge that same
-// day). Switching off an annual plan keeps full access for the first 10 of the already-paid 12
+// already paid for and the very next scheduled charge becomes the new plan's instead (two days'
+// buffer before that renewal, so the daily cron's cancellation lands before PayPlus's own early-
+// morning charge: see monthlySwitchDate in billingDates.ts — one day wasn't enough). Switching off an annual plan keeps full access for the first 10 of the already-paid 12
 // months (that's what the annual charge covers), then starts the new plan's billing for months
 // 11 and 12 instead of those being the old annual plan's two free bonus months. Keyed off the
 // CURRENT plan's billing-cycle length (not its literal identity) so this works for any of the
 // four plans, including a cross-tier switch like annual -> studio_pro_monthly.
 export function computePlanSwitchEffectiveDate(currentPlan: SubscriptionPlan, currentPeriodEnd: Date): Date {
-  if (PAYPLUS_BILLING[currentPlan].recurringRangeMonths <= 1) {
-    return new Date(currentPeriodEnd.getTime() - 24 * 60 * 60 * 1000);
-  }
+  if (PAYPLUS_BILLING[currentPlan].recurringRangeMonths <= 1) return monthlySwitchDate(currentPeriodEnd);
   return addBillingMonths(currentPeriodEnd, -2);
 }
 

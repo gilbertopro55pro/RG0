@@ -236,7 +236,18 @@ export default function BillingSettings({ photographer, recurringAmount = null }
 
           {!cancelAtPeriodEnd && (
             <div className="pt-3 mt-3 border-t border-line">
-              {pendingPlan ? (
+              {pendingPlan && pendingPlan === photographer.plan ? (
+                // A price change set by Gilberto (admin dashboard): the plan already changed, the new
+                // price starts at the next renewal through a payment link. Not the customer's to cancel.
+                <div className="rounded-xl px-3.5 py-2.5 bg-amber-bg">
+                  <p className="text-xs text-amber-deep">
+                    {t("מהחידוש הבא ({date}) המנוי יהיה בסך ₪{price}/חודש. יומיים לפני כן יישלח אליך במייל קישור להשלמת התשלום.", {
+                      price: plan.pricePerMonth,
+                      date: periodEndHe,
+                    })}
+                  </p>
+                </div>
+              ) : pendingPlan ? (
                 <div className="rounded-xl px-3.5 py-2.5 bg-amber-bg">
                   <p className="text-xs text-amber-deep mb-2">
                     {t("מתוזמן מעבר למסלול {plan} ב-{date}.", {

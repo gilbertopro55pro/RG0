@@ -40,6 +40,11 @@ export async function POST(request: Request) {
   const admin = createServiceRoleClient();
 
   if (cancel) {
+    // A price change set from the admin dashboard (pending_plan equal to the plan, lib/adminPlanChange.ts)
+    // isn't the customer's own switch: cancelling it would keep the old price.
+    if (photographer.pending_plan && photographer.pending_plan === photographer.plan) {
+      return NextResponse.json({ error: "את שינוי המחיר אפשר לבטל רק מול צוות גילברטו" }, { status: 409 });
+    }
     const { error } = await admin.from("photographers").update({ pending_plan: null, pending_plan_effective_at: null }).eq("id", user.id);
     if (error) return NextResponse.json({ error: "שגיאה בביטול ההחלפה המתוזמנת" }, { status: 500 });
     return NextResponse.json({ ok: true });

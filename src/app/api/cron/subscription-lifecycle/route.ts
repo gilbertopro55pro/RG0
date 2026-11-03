@@ -8,7 +8,7 @@ import type { Photographer } from "@/lib/types";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { alertBillingAdmin } from "@/lib/billingAlerts";
 import { photographerLang } from "@/lib/clientLang";
-import { nextDunningStage, dunningLockDate, UPCOMING_DAYS_BEFORE, type DunningFields } from "@/lib/dunning";
+import { nextDunningStage, dunningLockDate, currentDunningStage, UPCOMING_DAYS_BEFORE, type DunningFields } from "@/lib/dunning";
 import { dunningEmail, planSwitchEmail, renewalReminderEmail, trialDeletionFinalWarningEmail, trialDeletionWarningEmail, trialEndingEmail } from "@/lib/billingEmails";
 import { recurringAmounts } from "@/lib/recurringCharges";
 import { billedCycleAmount } from "@/lib/billedAmount";
@@ -160,6 +160,9 @@ export async function GET(request: NextRequest) {
       const targetInfo = SUBSCRIPTION_PLANS[targetPlan];
       const targetAmount = PAYPLUS_BILLING[targetPlan].amount;
       const wasOnLongCycle = PAYPLUS_BILLING[photographer.plan].recurringRangeMonths > 1;
+      // A price change from the admin dashboard (lib/adminPlanChange.ts): the plan already changed,
+      // only the price follows, so the email says that instead of "as you requested".
+      const priceChange = photographer.pending_plan === photographer.plan && !!photographer.current_period_end;
       await sendEmail({
         to: notificationEmailFor(photographer.email),
         ...planSwitchEmail(photographerLang(photographer.ui_lang), {
@@ -169,12 +172,23 @@ export async function GET(request: NextRequest) {
           targetPricePerMonth: targetInfo.pricePerMonth,
           wasOnLongCycle,
           paymentLink: paymentPageLink,
+          priceChange: priceChange ? { periodEnd: photographer.current_period_end! } : undefined,
         }),
       });
 
+      // This email is the "nothing will renew it" notice for the period, so step 6's first stage
+      // (upcoming, a link to pay) isn't sent on top of it the same morning. Due date, final warning
+      // and lock still follow if the new payment never comes.
       await supabase
         .from("photographers")
-        .update({ pending_plan: null, pending_plan_effective_at: null, ...(oldRecurringGone ? { payplus_recurring_uid: null } : {}) })
+        .update({
+          pending_plan: null,
+          pending_plan_effective_at: null,
+          ...(oldRecurringGone ? { payplus_recurring_uid: null } : {}),
+          ...(oldRecurringGone && photographer.current_period_end && currentDunningStage(photographer as unknown as DunningFields) < 1
+            ? { dunning_for: photographer.current_period_end, dunning_stage: 1 }
+            : {}),
+        })
         .eq("id", photographer.id);
       switchedCount++;
     } catch (e) {
