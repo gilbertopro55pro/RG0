@@ -1333,7 +1333,6 @@ function TextFloatingMenu({
   onDeleteSelected,
   maxHeightPx,
   widthPx,
-  isAdmin = false,
 }: {
   el: AlbumTextElement;
   album: { width_cm: number; height_cm: number };
@@ -1345,8 +1344,6 @@ function TextFloatingMenu({
   // The width of the photo-picker area the panel opens over, for the admin ("עדכון אדמין"
   // 2026-10-20, see textDockRect in the parent). Omitted → the usual 150px.
   widthPx?: number;
-  // The shadow's color and distance, admin only for now ("עדכון אדמין" 2026-10-21).
-  isAdmin?: boolean;
 }) {
   const t = useT();
   return (
@@ -1449,7 +1446,7 @@ function TextFloatingMenu({
       {/* The shadow's color and distance (owner, 2026-10-21), shown while there is a shadow, like
           the outline's color below. Until the distance is moved it follows the intensity
           (textShadowDistance), so the slider opens where the shadow already is. */}
-      {isAdmin && !!el.shadow && (
+      {!!el.shadow && (
         <>
           <p className="text-[10px] font-semibold text-ink-soft">{t("צבע הצל")}</p>
           <TextPaletteSwatches value={el.shadowColor ?? "#000000"} onPick={(c) => onUpdate({ shadowColor: c })} />
@@ -1858,61 +1855,6 @@ const SNAP_THRESHOLD = 1.2; // % of canvas
 // with lib/albumEditorGeometry, whose snapping/layer helpers measure elements the same way.
 const elementBox = layerBox;
 
-// While dragging an element, checks its candidate position against the page center and every
-// other element's edges/center on the same page — returns guide lines to draw plus a snapped
-// position when within SNAP_THRESHOLD, so aligning two frames (or centering one on the page)
-// is something the photographer can see and feel, not just eyeball.
-function computeAlignment(
-  dragging: { xPct: number; yPct: number; widthPct: number; heightPct: number },
-  others: AlbumElement[]
-): { guides: { axis: "v" | "h"; pos: number }[]; snapXPct?: number; snapYPct?: number } {
-  const guides: { axis: "v" | "h"; pos: number }[] = [];
-  let snapXPct: number | undefined;
-  let snapYPct: number | undefined;
-  const left = dragging.xPct;
-  const right = dragging.xPct + dragging.widthPct;
-  const centerX = dragging.xPct + dragging.widthPct / 2;
-  const top = dragging.yPct;
-  const bottom = dragging.yPct + dragging.heightPct;
-  const centerY = dragging.yPct + dragging.heightPct / 2;
-
-  if (Math.abs(centerX - 50) < SNAP_THRESHOLD) {
-    guides.push({ axis: "v", pos: 50 });
-    snapXPct = 50 - dragging.widthPct / 2;
-  }
-  if (Math.abs(centerY - 50) < SNAP_THRESHOLD) {
-    guides.push({ axis: "h", pos: 50 });
-    snapYPct = 50 - dragging.heightPct / 2;
-  }
-
-  for (const other of others) {
-    const box = elementBox(other);
-    const xChecks: [number, number, number][] = [
-      [left, box.left, box.left],
-      [right, box.right, box.right - dragging.widthPct],
-      [centerX, box.centerX, box.centerX - dragging.widthPct / 2],
-    ];
-    for (const [dragVal, otherVal, snapTo] of xChecks) {
-      if (Math.abs(dragVal - otherVal) < SNAP_THRESHOLD) {
-        guides.push({ axis: "v", pos: otherVal });
-        if (snapXPct === undefined) snapXPct = snapTo;
-      }
-    }
-    const yChecks: [number, number, number][] = [
-      [top, box.top, box.top],
-      [bottom, box.bottom, box.bottom - dragging.heightPct],
-      [centerY, box.centerY, box.centerY - dragging.heightPct / 2],
-    ];
-    for (const [dragVal, otherVal, snapTo] of yChecks) {
-      if (Math.abs(dragVal - otherVal) < SNAP_THRESHOLD) {
-        guides.push({ axis: "h", pos: otherVal });
-        if (snapYPct === undefined) snapYPct = snapTo;
-      }
-    }
-  }
-  return { guides, snapXPct, snapYPct };
-}
-
 function boxesIntersect(a: { left: number; top: number; right: number; bottom: number }, b: { left: number; top: number; right: number; bottom: number }): boolean {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
@@ -2309,7 +2251,7 @@ export default function AlbumSpreadCanvasEditor({
   onSidePanelOffsetChange: (offset: { x: number; y: number }) => void;
   // Unsaved work on this page from before an update's reload (see AlbumCanvasDraft).
   draft?: AlbumCanvasDraft | null;
-  // The admin account ("עדכון אדמין"): editor additions still being polished show only for it.
+  // The admin account ("עדכון אדמין"): the 43 masks of the pack (PACK_MASK_IDS) show only for it.
   isAdmin?: boolean;
   // The album's own page size. `album` above is the size of the page being edited, which differs
   // from the album's on a cover made at its own size (e.g. 32×32 in a 60×30 album) — the admin's
@@ -2363,8 +2305,11 @@ export default function AlbumSpreadCanvasEditor({
   // Only used for the button-size nudge below (cosmetic, not hit-testing-critical) — a brief stale
   // read here just means a button is very slightly under/over-sized for a moment, never a mis-click.
   const isPhone = viewportSize.w < 1024 && Math.min(viewportSize.w, viewportSize.h) <= 500;
-  // The tools as tags on the right edge (SIDE_TOOLS): the admin, free design, every screen size.
-  const sideTools = isAdmin && mode === "custom";
+  // The tools as tags on the right edge (SIDE_TOOLS): free design, every screen size (for everyone
+  // from 2026-11-03). The old button bars below still serve the text-only mode ("overlay"), and keep
+  // their free-design buttons so the tags can be switched off here in one line. Typed `boolean` so
+  // TypeScript doesn't narrow `mode` through it inside those bars.
+  const sideTools: boolean = mode === "custom";
   // Under 1024px the tags are compact. On a phone (on its side) the panel slides OVER the editor,
   // like the corrections panel there: in RTL it covers the favorites column and the page stays in
   // full view, and the phone's fixed grid has no room to give. A tablet's card shrinks beside it,
@@ -2739,8 +2684,8 @@ export default function AlbumSpreadCanvasEditor({
   const selectedTextId = selectedText?.id;
   const [textPanelOpen, setTextPanelOpen] = useState(false);
   useEffect(() => {
-    setTextPanelOpen(isAdmin && !!selectedTextId);
-  }, [selectedTextId, isAdmin]);
+    setTextPanelOpen(!!selectedTextId);
+  }, [selectedTextId]);
   const sidePanelOpen = !!selectedOrnament || !!selectedShape || (!!anchorPhoto && photoAdjustPanelOpen) || (!!selectedText && textPanelOpen);
   // Keeps the side panel's last content around through its own fade-out — without this,
   // deselecting would unmount the panel instantly (React removes it from the DOM the same render,
@@ -2793,7 +2738,7 @@ export default function AlbumSpreadCanvasEditor({
   const dragPanelRef = useRef<HTMLDivElement>(null);
   const [textDockRect, setTextDockRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   useEffect(() => {
-    if (!isAdmin || !textPanelOpen) return;
+    if (!textPanelOpen) return;
     const measure = () => {
       const r = dragPanelRef.current?.getBoundingClientRect();
       const visibleHeight = r ? Math.min(r.height, window.innerHeight - r.top - 8) : 0;
@@ -2802,7 +2747,7 @@ export default function AlbumSpreadCanvasEditor({
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [isAdmin, textPanelOpen]);
+  }, [textPanelOpen]);
   const textDockDrag = useDraggablePanelOffset(lastSideSelection?.type === "text" ? lastSideSelection.el.id : null);
   // Fixed DEFAULT size for the photo-adjustments panel — was 16cm long (tall) × 7cm wide, per
   // explicit request ("מידות ברירת המחדל של הפאנל אורך 16 ס״מ רוחב 7 ס״מ"), superseding every
@@ -3039,8 +2984,8 @@ export default function AlbumSpreadCanvasEditor({
   // phone/tablet only (isCompact), same fixed 0.42–0.68 range this always used before the brief
   // desktop generalization. No scroll fallback any more (per explicit "no scrolling at all"
   // request) — this scale plus the canvas-bound position clamp are what keep the menu on-page now.
-  // The admin's menu has one more button, "צורה מאחורי התמונות" (see PhotoFloatingMenu).
-  const circleMenuButtonCount = CIRCLE_MENU_BUTTON_COUNT + (isAdmin ? 1 : 0);
+  // Plus "צורה מאחורי התמונות" (see PhotoFloatingMenu).
+  const circleMenuButtonCount = CIRCLE_MENU_BUTTON_COUNT + 1;
   const menuButtonScale = (() => {
     if (!isCompact) return 1;
     const MIN_SCALE = 0.42;
@@ -3982,7 +3927,7 @@ export default function AlbumSpreadCanvasEditor({
       const handle = drag.resizeHandle ?? "se";
       const isSingleResize = Object.keys(drag.groupStart).length === 1;
 
-      if (isAdmin && !allowOverflow) {
+      if (!allowOverflow) {
         // Admin only ("עדכון אדמין" 2026-10-20, owner: "ברגע שמתחתי את קצה הקנבס המתיחה תיעצר שם",
         // and snapping to the green frame while stretching a selection "לאורך, רוחב או באלכסון").
         // One photo or a whole selection resizes as one box: the anchored side never moves, the
@@ -4112,7 +4057,7 @@ export default function AlbumSpreadCanvasEditor({
     }
 
     const groupIds = Object.keys(drag.groupStart);
-    if (groupIds.length > 1 && isAdmin) {
+    if (groupIds.length > 1) {
       // Admin only ("עדכון אדמין" 2026-10-20, owner: "אפקט נעיצה במסגרת הירוקה ובגבולות תמונות
       // סמוכות כאשר מסומנות תמונה או תמונות יחד"). The whole selection is one rigid block: ONE delta
       // for every member, clamped so the block's bounding box stays on the page — the branch below
@@ -4146,53 +4091,6 @@ export default function AlbumSpreadCanvasEditor({
       );
       return;
     }
-    if (groupIds.length > 1) {
-      // Multiple selected elements move together by the same delta. Guides/snapping are computed
-      // from the selection's bounding box against everything NOT in the group — the resulting
-      // correction is then applied to every group member so the whole selection snaps together.
-      // Clamped against the PRIMARY element's own width/height, not a flat 95 — a flat cap only
-      // bounds the anchor CORNER, so anything wider/taller than 5% of the page could still be
-      // dragged clean off the right/bottom edge with zero resistance. Per explicit request: no
-      // element may cross the page boundary on any side, including while dragging a group.
-      const groupCandidateX = Math.max(0, Math.min(100 - primaryStart.widthPct, primaryStart.xPct + dxPct));
-      const groupCandidateY = Math.max(0, Math.min(100 - primaryStart.heightPct, primaryStart.yPct + dyPct));
-      const groupOthers = elements.filter((x) => !drag.groupStart[x.id]);
-      // Alignment (page center included) is checked for the WHOLE selection's bounding box, so a
-      // group centers on the page as one block (owner, 2026-10-06: selecting several photos showed
-      // no center snap — it used to test only the photo under the cursor).
-      const groupMembers = Object.values(drag.groupStart);
-      const gLeft = Math.min(...groupMembers.map((g) => g.xPct)) + (groupCandidateX - primaryStart.xPct);
-      const gTop = Math.min(...groupMembers.map((g) => g.yPct)) + (groupCandidateY - primaryStart.yPct);
-      const gRight = Math.max(...groupMembers.map((g) => g.xPct + g.widthPct)) + (groupCandidateX - primaryStart.xPct);
-      const gBottom = Math.max(...groupMembers.map((g) => g.yPct + g.heightPct)) + (groupCandidateY - primaryStart.yPct);
-      const groupBox = { xPct: gLeft, yPct: gTop, widthPct: gRight - gLeft, heightPct: gBottom - gTop };
-      const { guides: gAlignGuides, snapXPct: gaSnapX, snapYPct: gaSnapY } = computeAlignment(groupBox, groupOthers);
-      const { snapXPct: gmSnapX, snapYPct: gmSnapY } = computeMarginMoveSnap(groupBox, marginInsetPct);
-      // Equal spacing is measured from the whole selection's outer edges too, so the block keeps an
-      // even gap to the photos around it.
-      const { guides: gSpacingGuides, snapXPct: gsSnapX, snapYPct: gsSnapY } = computeSpacingGuides(groupBox, groupOthers);
-      const gSnapX = gaSnapX ?? gmSnapX ?? gsSnapX;
-      const gSnapY = gaSnapY ?? gmSnapY ?? gsSnapY;
-      setGuides(gAlignGuides);
-      setSpacingGuides(gaSnapX !== undefined || gaSnapY !== undefined ? [] : gSpacingGuides);
-      setMarginSnap({ x: gaSnapX === undefined && gmSnapX !== undefined, y: gaSnapY === undefined && gmSnapY !== undefined });
-      const correctionX = gSnapX !== undefined ? gSnapX - gLeft : 0;
-      const correctionY = gSnapY !== undefined ? gSnapY - gTop : 0;
-      setElements((prev) =>
-        prev.map((e2) => {
-          const gs = drag.groupStart[e2.id];
-          if (!gs) return e2;
-          // Each group member clamped against its OWN width/height too — the shared delta keeps
-          // the group moving together in the common case, but no individual member is ever let
-          // through the page edge even if it's larger than the primary dragged element.
-          const nx = Math.max(0, Math.min(100 - gs.widthPct, gs.xPct + dxPct + correctionX));
-          const ny = Math.max(0, Math.min(100 - gs.heightPct, gs.yPct + dyPct + correctionY));
-          return { ...e2, xPct: nx, yPct: ny };
-        })
-      );
-      return;
-    }
-
     // See the group-drag branch above for why this is clamped against the element's own
     // width/height rather than a flat 95 — same "never cross the page edge" fix.
     const candidateX = Math.max(0, Math.min(100 - primaryStart.widthPct, primaryStart.xPct + dxPct));
@@ -4201,9 +4099,7 @@ export default function AlbumSpreadCanvasEditor({
     const candidateBox = { xPct: candidateX, yPct: candidateY, widthPct: primaryStart.widthPct, heightPct: primaryStart.heightPct };
     // The admin's version also snaps an edge flush against a neighbour's opposite edge (the
     // borders of adjacent photos), nearest line first — see the admin group branch above.
-    const { guides: nextGuides, snapXPct: aSnapX, snapYPct: aSnapY } = isAdmin
-      ? computeMoveAlignment(candidateBox, others, SNAP_THRESHOLD)
-      : computeAlignment(candidateBox, others);
+    const { guides: nextGuides, snapXPct: aSnapX, snapYPct: aSnapY } = computeMoveAlignment(candidateBox, others, SNAP_THRESHOLD);
     const { guides: nextSpacingGuides, snapXPct: sSnapX, snapYPct: sSnapY } = computeSpacingGuides(candidateBox, others);
     const { snapXPct: mSnapX, snapYPct: mSnapY } = computeMarginMoveSnap(candidateBox, marginInsetPct);
     setGuides(nextGuides);
@@ -5261,7 +5157,7 @@ export default function AlbumSpreadCanvasEditor({
               // admin ("עדכון אדמין" 2026-10-20, owner: "זום יגדיל את התמונה בתוך שטח הקנבס ולא
               // יחרוג ממנו") it sits in its own page-sized clipping layer — zoom and blur stay inside
               // the page, as in the page thumbnails and every export (all crop to the page).
-              return isAdmin ? <div className="absolute inset-0 overflow-hidden pointer-events-none">{backgroundImg}</div> : backgroundImg;
+              return <div className="absolute inset-0 overflow-hidden pointer-events-none">{backgroundImg}</div>;
             })()}
           {mode === "overlay" && (
             <div className={`absolute inset-0 flex ${spread.layout === "stack" ? "flex-col" : "flex-row"} gap-0.5 pointer-events-none`}>
@@ -5821,7 +5717,7 @@ export default function AlbumSpreadCanvasEditor({
               setPhotoShadowPanelOpen(false);
               setPhotoAdjustPanelOpen((v) => !v);
             }}
-            onAddShapeBehind={isAdmin ? addShapeBehindSelectedPhotos : undefined}
+            onAddShapeBehind={addShapeBehindSelectedPhotos}
           />
           );
         })()}
@@ -5871,7 +5767,7 @@ export default function AlbumSpreadCanvasEditor({
           const centerY = canvasRestRect.top + canvasRestRect.height / 2;
           // Admin only: the text panel docks over the photo-picker area, top-anchored at its own
           // width, with its own drag offset (see textDockRect / textDockDrag).
-          const textDock = isAdmin && lastSideSelection.type === "text" ? textDockRect : null;
+          const textDock = lastSideSelection.type === "text" ? textDockRect : null;
           const panelDrag = textDock ? textDockDrag : sidePanelDrag;
           const panelTopPx = textDock ? textDock.top : lastSideSelection.type === "photo" ? canvasRestRect.top : centerY;
           // Suspends the open/close transition during EITHER a live drag OR a live resize — both
@@ -5927,16 +5823,12 @@ export default function AlbumSpreadCanvasEditor({
                 onDeleteSelected={removeSelected}
                 onBringToFront={() => bringToFront(lastSideSelection.el.id)}
                 onSendToBack={() => sendToBack(lastSideSelection.el.id)}
-                photoLayer={
-                  isAdmin
-                    ? {
-                        onBelow: () => moveShapeUnderOrOverPhotos(lastSideSelection.el.id, "below"),
-                        onAbove: () => moveShapeUnderOrOverPhotos(lastSideSelection.el.id, "above"),
-                        canBelow: moveShapeAroundPhotos(elements, lastSideSelection.el.id, "below") !== elements,
-                        canAbove: moveShapeAroundPhotos(elements, lastSideSelection.el.id, "above") !== elements,
-                      }
-                    : undefined
-                }
+                photoLayer={{
+                  onBelow: () => moveShapeUnderOrOverPhotos(lastSideSelection.el.id, "below"),
+                  onAbove: () => moveShapeUnderOrOverPhotos(lastSideSelection.el.id, "above"),
+                  canBelow: moveShapeAroundPhotos(elements, lastSideSelection.el.id, "below") !== elements,
+                  canAbove: moveShapeAroundPhotos(elements, lastSideSelection.el.id, "above") !== elements,
+                }}
               />
             ) : lastSideSelection.type === "text" ? (
               <TextFloatingMenu
@@ -5947,7 +5839,6 @@ export default function AlbumSpreadCanvasEditor({
                 // Docked (admin): as tall as the picker area, less the drag grip above the panel.
                 maxHeightPx={textDock ? Math.max(160, textDock.height - 24) : Math.max(160, canvasRestRect.height - 36)}
                 widthPx={textDock ? textDock.width : undefined}
-                isAdmin={isAdmin}
               />
             ) : (
               <PhotoAdjustFloatingMenu
@@ -6023,8 +5914,8 @@ export default function AlbumSpreadCanvasEditor({
                 // open. `album` is the size of the page being edited; the album's own size comes
                 // from bookSize, or is `album` itself when this page has no size of its own (without
                 // bookSize, a page with its own size being edited still lends it to the others).
-                const pageSize = isAdmin ? pageSizeOf(s, bookSize ?? album) : album;
-                const pageRatio = isAdmin && pageSize.width_cm > 0 && pageSize.height_cm > 0 ? pageSize.width_cm / pageSize.height_cm : canvasRatio;
+                const pageSize = pageSizeOf(s, bookSize ?? album);
+                const pageRatio = pageSize.width_cm > 0 && pageSize.height_cm > 0 ? pageSize.width_cm / pageSize.height_cm : canvasRatio;
                 return (
                   <div
                     key={s.id}
@@ -6042,7 +5933,7 @@ export default function AlbumSpreadCanvasEditor({
                       album={pageSize}
                       photos={photos}
                       customOrnaments={customOrnaments}
-                      exactText={isAdmin}
+                      exactText
                       onClick={isCurrent ? undefined : () => void switchToSpread(s.id)}
                     />
                     {/* The frame is an overlay ON TOP of the thumbnail (an outline on this box gets painted

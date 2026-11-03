@@ -102,7 +102,6 @@ export default function PublicGalleryView({
   selectionTarget = null,
   targetCelebrated = false,
   recordCelebration = true,
-  slideshowFx3d = false,
 }: {
   token: string;
   initialPhotos: PhotoWithUrl[];
@@ -136,9 +135,6 @@ export default function PublicGalleryView({
   targetCelebrated?: boolean;
   // False in the photographer's own preview: the confetti still shows, but isn't recorded.
   recordCelebration?: boolean;
-  // The 3D slideshow (random order, 3D transitions): only in the admin's galleries for now
-  // (lib/slideshow3d/access.ts, decided on the server).
-  slideshowFx3d?: boolean;
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride, gridStyleOverride });
   // The premium theme's layout: sticky action bar, chapter titles, footer, black lightbox.
@@ -2743,7 +2739,7 @@ export default function PublicGalleryView({
         <GallerySlideshow
           photos={slideshowPhotos.map((p) => ({ id: p.id, url: clientScreenUrl(token, p) }))}
           onClose={() => setSlideshowOpen(false)}
-          fx3d={slideshowFx3d}
+          fx3d
           video={
             allowDownloads
               ? {

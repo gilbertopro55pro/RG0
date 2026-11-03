@@ -78,9 +78,9 @@ export default function GallerySlideshow({
   onClose: () => void;
   // The download button (a video of the slideshow); none when downloads aren't allowed.
   video?: SlideshowVideo;
-  // The 3D slideshow (owner, 2026-11-02, admin only for now: lib/slideshow3d/access.ts): the photos
-  // in a random order, 3D transitions between them, drawn on a canvas by the same code as the video.
-  // Off: the classic slideshow below, unchanged.
+  // The 3D slideshow (owner, 2026-11-02; for everyone from 2026-11-03, both callers pass it): the
+  // photos in a random order, 3D transitions between them, drawn on a canvas by the same code as the
+  // video. Off: the classic slideshow below.
   fx3d?: boolean;
 }) {
   const [index, setIndex] = useState(0);
