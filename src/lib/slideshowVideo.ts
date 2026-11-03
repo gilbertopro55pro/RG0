@@ -6,6 +6,8 @@
 // The pure part (which slide when, and where the photo is at that moment) is tested on its own; the
 // CSS animations in GallerySlideshow use the same numbers.
 
+import type { ShowPlan } from "@/lib/slideshow3d/plan";
+
 export const SLIDE_SECONDS = 3;
 export const ENTRANCE_SECONDS = 1.1;
 
@@ -255,7 +257,11 @@ export async function exportSlideshowVideo(opts: {
   phone: boolean;
   onProgress?: (fraction: number) => void;
   isCancelled?: () => boolean;
+  // The 3D slideshow (admin only for now, lib/slideshow3d): `urls` are already in its random order,
+  // and every frame is drawn by the same drawShowFrame as the screen.
+  show?: ShowPlan | null;
 }): Promise<Blob> {
+  if (opts.show) return exportShowVideo({ ...opts, show: opts.show });
   const { exportReelMp4, ReelCancelledError, ReelUnsupportedError } =
     await import("@/lib/reels/encode");
   const size = slideshowVideoSize(opts.phone);
@@ -327,6 +333,81 @@ export async function exportSlideshowVideo(opts: {
       throw new SlideshowVideoError("cancelled");
     if (e instanceof ReelUnsupportedError)
       throw new SlideshowVideoError("unsupported");
+    throw new SlideshowVideoError("failed");
+  }
+}
+
+
+// The 3D slideshow as a video: the same timeline as the screen (3 seconds a photo, its transition
+// in during the first 1.2), drawn frame by frame with drawShowFrame. The photo going off and the one
+// coming on are both needed during a transition; the next two load ahead.
+async function exportShowVideo(opts: {
+  urls: string[];
+  phone: boolean;
+  onProgress?: (fraction: number) => void;
+  isCancelled?: () => boolean;
+  show: ShowPlan;
+}): Promise<Blob> {
+  const [{ exportReelMp4, ReelCancelledError, ReelUnsupportedError }, { drawShowFrame }, { loadFxImage }, { showMomentAt }] =
+    await Promise.all([
+      import("@/lib/reels/encode"),
+      import("@/lib/slideshow3d/render"),
+      import("@/lib/slideshow3d/images"),
+      import("@/lib/slideshow3d/plan"),
+    ]);
+  type Img = Awaited<ReturnType<typeof loadFxImage>>;
+  const size = slideshowVideoSize(opts.phone);
+  const canvas = document.createElement("canvas");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no-canvas");
+  const count = opts.urls.length;
+  const plan = opts.show;
+  const loaded = new Map<number, Promise<Img>>();
+  const load = (i: number) => {
+    if (i < 0 || i >= count || loaded.has(i)) return;
+    // Same-site photos at their size: the video is drawn at full quality.
+    loaded.set(i, loadFxImage(opts.urls[i], null));
+  };
+  let current: Img = null;
+  let previous: Img = null;
+  let currentIndex = -1;
+  try {
+    return await exportReelMp4({
+      canvas,
+      total: slideshowSeconds(count),
+      bitrate: size.bitrate,
+      prepare: async (t) => {
+        const { index } = showMomentAt(t, count);
+        if (index === currentIndex) return;
+        for (let i = index - 1; i <= index + 2; i++) load(i);
+        for (const k of [...loaded.keys()]) if (k < index - 1) loaded.delete(k);
+        current = (await loaded.get(index)) ?? null;
+        previous = index > 0 ? ((await loaded.get(index - 1)) ?? null) : null;
+        currentIndex = index;
+      },
+      draw: (t) => {
+        const m = showMomentAt(t, count);
+        drawShowFrame(
+          ctx,
+          size.width,
+          size.height,
+          {
+            incoming: { img: current, age: m.age, drift: plan.drifts[m.index] },
+            outgoing: m.prev !== null ? { img: previous, age: m.prevAge, drift: plan.drifts[m.prev] } : null,
+            transition: m.index === 0 ? null : (plan.transitions[m.index] ?? null),
+            progress: m.progress,
+          },
+          "video",
+        );
+      },
+      onProgress: opts.onProgress,
+      isCancelled: opts.isCancelled,
+    });
+  } catch (e) {
+    if (e instanceof ReelCancelledError) throw new SlideshowVideoError("cancelled");
+    if (e instanceof ReelUnsupportedError) throw new SlideshowVideoError("unsupported");
     throw new SlideshowVideoError("failed");
   }
 }

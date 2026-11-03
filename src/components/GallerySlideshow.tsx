@@ -13,6 +13,8 @@ import {
   slideshowFileName,
   type SlideEffect,
 } from "@/lib/slideshowVideo";
+import { makeShowPlan, newShowSeed } from "@/lib/slideshow3d/plan";
+import type { ShowPlayer } from "@/lib/slideshow3d/player";
 
 type SlidePhoto = { id: string; url: string };
 
@@ -70,15 +72,50 @@ export default function GallerySlideshow({
   photos,
   onClose,
   video,
+  fx3d = false,
 }: {
   photos: SlidePhoto[];
   onClose: () => void;
   // The download button (a video of the slideshow); none when downloads aren't allowed.
   video?: SlideshowVideo;
+  // The 3D slideshow (owner, 2026-11-02, admin only for now: lib/slideshow3d/access.ts): the photos
+  // in a random order, 3D transitions between them, drawn on a canvas by the same code as the video.
+  // Off: the classic slideshow below, unchanged.
+  fx3d?: boolean;
 }) {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const effects = useMemo(() => randomEffects(photos.length), [photos.length]);
+  // One seed when the slideshow opens: the order, the effects and the drift, the same on the screen
+  // and in the video made from it.
+  const [showSeed] = useState(newShowSeed);
+  const show = useMemo(() => (fx3d ? makeShowPlan(photos.length, showSeed) : null), [fx3d, photos.length, showSeed]);
+  const shown = show ? show.order.map((i) => photos[i]) : photos;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const playerRef = useRef<ShowPlayer | null>(null);
+  const playingRef = useRef(playing);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const showUrls = show ? shown.map((p) => p.url).join("\n") : "";
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!show || !canvas || !showUrls) return;
+    let player: ShowPlayer | null = null;
+    let cancelled = false;
+    void import("@/lib/slideshow3d/player").then(({ ShowPlayer }) => {
+      if (cancelled) return;
+      player = new ShowPlayer({ canvas, urls: showUrls.split("\n"), plan: show, onIndex: setIndex, playing: playingRef.current });
+      playerRef.current = player;
+    });
+    return () => {
+      cancelled = true;
+      player?.destroy();
+      playerRef.current = null;
+    };
+  }, [show, showUrls]);
+  useEffect(() => {
+    playingRef.current = playing;
+    playerRef.current?.setPlaying(playing);
+  }, [playing]);
   const t = useT();
   const [videoState, setVideoState] = useState<VideoState | null>(null);
   const cancelVideo = useRef(false);
@@ -98,8 +135,9 @@ export default function GallerySlideshow({
     setVideoState({ status: "working", pct: 0 });
     try {
       const blob = await exportSlideshowVideo({
-        urls: photos.map((p) => video.photoUrl(p.id)),
+        urls: shown.map((p) => video.photoUrl(p.id)),
         effects,
+        show,
         phone: isPhone(),
         onProgress: (f) => setVideoState((s) => (s?.status === "working" ? { status: "working", pct: Math.min(99, Math.round(f * 100)) } : s)),
         isCancelled: () => cancelVideo.current,
@@ -127,15 +165,16 @@ export default function GallerySlideshow({
   // Arrows follow the page's own direction (the client's language), not <html dir>.
   const isRtl = dirOf(useLang()) === "rtl";
 
-  const next = () => setIndex((i) => (i + 1) % photos.length);
-  const prev = () => setIndex((i) => (i - 1 + photos.length) % photos.length);
+  const next = () => (show ? playerRef.current?.next() : setIndex((i) => (i + 1) % photos.length));
+  const prev = () => (show ? playerRef.current?.prev() : setIndex((i) => (i - 1 + photos.length) % photos.length));
 
   useEffect(() => {
-    if (!playing || photos.length <= 1) return;
+    // The 3D slideshow keeps its own time (lib/slideshow3d/player.ts).
+    if (!playing || photos.length <= 1 || show) return;
     const t = setTimeout(next, SLIDE_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, playing, photos.length]);
+  }, [index, playing, photos.length, show]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -157,27 +196,59 @@ export default function GallerySlideshow({
   const effect = effects[index];
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black flex items-center justify-center overflow-hidden select-none">
-      <style>{`
-        @keyframes gs-kenburns-in { from { transform: scale(1); } to { transform: scale(1.32); } }
-        @keyframes gs-kenburns-out { from { transform: scale(1.32); } to { transform: scale(1); } }
-        @keyframes gs-fade-punch { from { opacity: 0; transform: scale(0.88); } to { opacity: 1; transform: scale(1); } }
-        @keyframes gs-slide-left { from { transform: translateX(22%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        @keyframes gs-slide-right { from { transform: translateX(-22%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        @keyframes gs-slide-up { from { transform: translateY(18%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        @keyframes gs-slide-down { from { transform: translateY(-18%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        @keyframes gs-rotate-in { from { opacity: 0; transform: rotate(-9deg) scale(0.9); } to { opacity: 1; transform: rotate(0deg) scale(1); } }
-        @keyframes gs-circle-reveal { from { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(75% at 50% 50%); } }
-      `}</style>
+    <div
+      className="fixed inset-0 z-[80] bg-black flex items-center justify-center overflow-hidden select-none"
+      // A swipe on the 3D slideshow: the finger to the left brings the next photo, as in the gallery.
+      onTouchStart={
+        show
+          ? (e) => {
+              const t = e.touches[0];
+              touchStart.current = t ? { x: t.clientX, y: t.clientY } : null;
+            }
+          : undefined
+      }
+      onTouchEnd={
+        show
+          ? (e) => {
+              const start = touchStart.current;
+              touchStart.current = null;
+              const t = e.changedTouches[0];
+              if (!start || !t) return;
+              const dx = t.clientX - start.x;
+              const dy = t.clientY - start.y;
+              if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy)) return;
+              if (dx < 0) next();
+              else prev();
+            }
+          : undefined
+      }
+    >
+      {show ? (
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden />
+      ) : (
+        <>
+          <style>{`
+            @keyframes gs-kenburns-in { from { transform: scale(1); } to { transform: scale(1.32); } }
+            @keyframes gs-kenburns-out { from { transform: scale(1.32); } to { transform: scale(1); } }
+            @keyframes gs-fade-punch { from { opacity: 0; transform: scale(0.88); } to { opacity: 1; transform: scale(1); } }
+            @keyframes gs-slide-left { from { transform: translateX(22%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+            @keyframes gs-slide-right { from { transform: translateX(-22%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+            @keyframes gs-slide-up { from { transform: translateY(18%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+            @keyframes gs-slide-down { from { transform: translateY(-18%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+            @keyframes gs-rotate-in { from { opacity: 0; transform: rotate(-9deg) scale(0.9); } to { opacity: 1; transform: rotate(0deg) scale(1); } }
+            @keyframes gs-circle-reveal { from { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(75% at 50% 50%); } }
+          `}</style>
 
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        key={photo.id}
-        src={photo.url}
-        alt=""
-        className="max-w-full max-h-full object-contain"
-        style={{ animation: ANIMATIONS[effect] }}
-      />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            key={photo.id}
+            src={photo.url}
+            alt=""
+            className="max-w-full max-h-full object-contain"
+            style={{ animation: ANIMATIONS[effect] }}
+          />
+        </>
+      )}
 
       <div className="absolute top-4 end-4 flex items-center gap-2">
         <button

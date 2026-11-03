@@ -23,6 +23,7 @@ import type { GalleryStyleOverrides } from "@/lib/galleryTheme";
 import { galleryBrandingAllowed } from "@/lib/galleryBranding";
 import { isLightTextColor } from "@/lib/textColor";
 import { clientLangFor } from "@/lib/clientLang";
+import { slideshow3dFor } from "@/lib/slideshow3d/access";
 import ClientLangScope from "@/i18n/ClientLangScope";
 import { dateLocale, type Lang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
@@ -523,6 +524,8 @@ export default async function PublicGalleryPage({
       selectionTarget={selectionTargetFor({ eventType: event?.event_type ?? null, title: gallery.title, targets: brandingPhotographer?.photo_selection_targets })}
       targetCelebrated={!!(gallery as { selection_target_celebrated_at?: string | null }).selection_target_celebrated_at}
       recordCelebration={!isOwnerPreview}
+      // Only a yes/no reaches the page, never the photographer's email.
+      slideshowFx3d={slideshow3dFor(brandingPhotographer?.email)}
     />
   );
 

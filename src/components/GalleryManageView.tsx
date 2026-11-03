@@ -84,6 +84,7 @@ import GalleryFtpSection from "@/components/GalleryFtpSection";
 import { detectFacesInImageUrl, clusterFaces, type FaceBox } from "@/lib/faceRecognition";
 import { GALLERY_EXPIRY_OPTIONS, GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, VIDEO_MAX_BYTES_BY_TIER, type SubscriptionPlan, type SubscriptionTier } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
+import { slideshow3dFor } from "@/lib/slideshow3d/access";
 import { ALLOWED_ACCEPT, isAllowedImageFile, isAllowedImageName } from "@/lib/imageUpload";
 import { readActiveUploadLock, requestActiveUploadCancel, type ActiveUploadLock } from "@/lib/activeUploadLock";
 import {
@@ -4879,6 +4880,7 @@ export default function GalleryManageView({
         <GallerySlideshow
           photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: resizedPhotoUrl(p, 1920) }))}
           onClose={() => setSlideshowPreviewOpen(false)}
+          fx3d={slideshow3dFor(photographerEmail)}
           video={{
             // From this site (the canvas can't take the CDN's previews): the server-resized photo.
             photoUrl: (id) => photographerImageUrl(gallery.id, id, 1920),
