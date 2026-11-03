@@ -1689,6 +1689,9 @@ const PHOTO_SIZE_OPTIONS = [
 // The same as the corrections panel (CORRECTIONS_PANEL_MS), so both sides move alike.
 const SIDE_PANEL_MS = 300;
 const SIDE_TAG_WIDTH = 30;
+// Under 1024px (a phone on its side, a tablet): narrower tags with smaller text, so all nine fit
+// the height of a phone held sideways.
+const SIDE_TAG_WIDTH_COMPACT = 24;
 // The editor remounts on every page switch: the open tool stays open on the next page.
 let lastSideTool: SideTool | null = null;
 
@@ -2360,8 +2363,23 @@ export default function AlbumSpreadCanvasEditor({
   // Only used for the button-size nudge below (cosmetic, not hit-testing-critical) — a brief stale
   // read here just means a button is very slightly under/over-sized for a moment, never a mis-click.
   const isPhone = viewportSize.w < 1024 && Math.min(viewportSize.w, viewportSize.h) <= 500;
-  // The tools as tags on the right edge (SIDE_TOOLS): the admin, free design, a computer.
-  const sideTools = isAdmin && mode === "custom" && viewportSize.w >= 1024;
+  // The tools as tags on the right edge (SIDE_TOOLS): the admin, free design, every screen size.
+  const sideTools = isAdmin && mode === "custom";
+  // Under 1024px the tags are compact. On a phone (on its side) the panel slides OVER the editor,
+  // like the corrections panel there: in RTL it covers the favorites column and the page stays in
+  // full view, and the phone's fixed grid has no room to give. A tablet's card shrinks beside it,
+  // as on a computer.
+  const sideCompact = sideTools && viewportSize.w < 1024;
+  const sideOverlay = sideCompact && isPhone;
+  const sideTagWidth = sideCompact ? SIDE_TAG_WIDTH_COMPACT : SIDE_TAG_WIDTH;
+  // The compact tags' text size: 10px, down to 8px when the nine tags don't fit the screen's height
+  // (a short phone on its side, English or Russian), and then tighter padding. Starts over for
+  // every screen size.
+  const sideRailRef = useRef<HTMLDivElement | null>(null);
+  const sideFitKey = `${viewportSize.w}x${viewportSize.h}`;
+  const [sideTagFit, setSideTagFit] = useState({ key: "", px: 10, tight: false });
+  const sideTagPx = sideTagFit.key === sideFitKey ? sideTagFit.px : 10;
+  const sideTagTight = sideTagFit.key === sideFitKey && sideTagFit.tight;
   const [sideToolState, setSideToolState] = useState<SideTool | null>(() => lastSideTool);
   const sideTool = sideTools ? sideToolState : null;
   // What the panel shows: the open tool, and the last one while the panel slides out after closing.
@@ -2375,9 +2393,11 @@ export default function AlbumSpreadCanvasEditor({
   // buttons, null until it mounts.
   const [sideShellEl, setSideShellEl] = useState<HTMLElement | null>(null);
   const sideShell = (tool: SideTool) => (sideTools ? (sidePanelTool === tool ? sideShellEl : null) : undefined);
-  const sidePanelPx = Math.round(Math.min(380, Math.max(300, viewportSize.w * 0.25)));
-  // The room on the right: the tags always, and the panel while a tool is open.
-  const sideInsetPx = sideTools ? SIDE_TAG_WIDTH + (sideTool ? sidePanelPx : 0) : 0;
+  const sidePanelPx = sideCompact
+    ? Math.round(Math.min(320, Math.max(240, viewportSize.w * 0.36)))
+    : Math.round(Math.min(380, Math.max(300, viewportSize.w * 0.25)));
+  // The room on the right: the tags always, and (not on a phone) the panel while a tool is open.
+  const sideInsetPx = sideTools ? sideTagWidth + (sideTool && !sideOverlay ? sidePanelPx : 0) : 0;
   // Broader than isPhone (any width under the desktop breakpoint, tablet included, e.g. an iPad
   // running this as a standalone PWA) — drives the "never grow taller than the photo area" clamp on
   // the photo-edit panels below. That clamp used to be gated to isPhone specifically, which meant a
@@ -2427,6 +2447,13 @@ export default function AlbumSpreadCanvasEditor({
     return () => clearTimeout(timer);
   }, [phase]);
   const needsRotate = phase === "portrait";
+  // The compact tags' fit (sideTagPx above), once the editor itself is on screen (phase).
+  useLayoutEffect(() => {
+    const rail = sideRailRef.current;
+    if (!sideCompact || !rail || sideTagTight) return;
+    if (rail.scrollHeight <= rail.clientHeight + 1) return;
+    setSideTagFit(sideTagPx > 8 ? { key: sideFitKey, px: sideTagPx - 0.5, tight: false } : { key: sideFitKey, px: 8, tight: true });
+  }, [sideCompact, sideFitKey, sideTagPx, sideTagTight, phase]);
 
   const [elements, setElementsRaw] = useState<AlbumElement[]>(() => draft?.elements ?? (mode === "custom" ? seedElementsFromPreset(spread) : spread.elements));
   // Multiple photo elements can be selected at once (shift-click or a rubber-band marquee drag)
@@ -4494,10 +4521,11 @@ export default function AlbumSpreadCanvasEditor({
           // tags and panel on the right (sideInsetPx) take their room as padding, so they stay
           // inside this element (it is their containing block: backdrop-filter).
           left: leftInsetPx,
-          paddingRight: sideTools ? 16 + sideInsetPx : undefined,
+          paddingRight: sideTools ? (sideCompact ? sideInsetPx + 2 : 16 + sideInsetPx) : undefined,
           transition: `left 300ms ease, padding-right ${SIDE_PANEL_MS}ms ease`,
           "--gf-editor-inset": `${leftInsetPx + sideInsetPx}px`,
-          "--gf-dragpanel-w": sideTool ? `${Math.round(Math.min(380, Math.max(240, (viewportSize.w - sideInsetPx) * 0.26)))}px` : undefined,
+          "--gf-side-rail": sideCompact ? `${sideInsetPx}px` : undefined,
+          "--gf-dragpanel-w": sideTool && !sideCompact ? `${Math.round(Math.min(380, Math.max(240, (viewportSize.w - sideInsetPx) * 0.26)))}px` : undefined,
         } as CSSProperties
       }
       // Right-click (and the page's own custom menu, if it ever grows one) does nothing here —
@@ -4614,7 +4642,8 @@ export default function AlbumSpreadCanvasEditor({
         }
         @media (max-width: 1023.98px) {
           .gf-album-editor-card {
-            width: 96vw !important;
+            /* --gf-side-rail: the tool tags on the right edge (SIDE_TOOLS), when they're shown. */
+            width: calc(96vw - var(--gf-side-rail, 0px)) !important;
             height: 94vh !important;
             max-width: none !important;
             max-height: none !important;
@@ -4728,7 +4757,22 @@ export default function AlbumSpreadCanvasEditor({
             border-top: none !important;
           }
           `
-              : ""
+              : sideTools
+                ? `
+          /* Tablet with the tools as tags (SIDE_TOOLS): the sidebar held the old buttons and the
+             selection hint. Its column goes to the canvas, and the hint is dropped, as on a phone:
+             floating over the canvas it covered the top of the photo's own floating menu. */
+          .gf-album-editor-card {
+            transition: width ${SIDE_PANEL_MS}ms ease;
+          }
+          .gf-album-editor-sidebar {
+            display: contents !important;
+          }
+          .gf-album-selection-info {
+            display: none !important;
+          }
+          `
+                : ""
           }
         }
         /* Real desktop only (>=1024px) -- the phone/tablet block above (max-width: 1023.98px) is
@@ -6470,7 +6514,7 @@ export default function AlbumSpreadCanvasEditor({
             get one from a template. The background button has no room for the opacity/blur
             sliders desktop gets when a background is already set — tapping it again removes the
             background outright instead; fine-tuning it still works normally on tablet/desktop. */}
-        {isPhone && (
+        {isPhone && !sideTools && (
           <div className="mt-2 space-y-1">
             <div className="flex gap-1">
               {mode === "custom" && (
@@ -7318,8 +7362,19 @@ export default function AlbumSpreadCanvasEditor({
             }}
           />
           <div
-            className="fixed z-[83] top-1/2 flex flex-col items-end gap-1"
-            style={{ right: sideTool ? sidePanelPx : 0, transform: "translateY(-50%)", transition: `right ${SIDE_PANEL_MS}ms ease` }}
+            ref={sideRailRef}
+            // Physical sides (dir="ltr"): items-end keeps every tag on the screen's right edge, against
+            // the panel, in every language (in RTL it was the left, and the open, wider tag pushed the
+            // others off the panel's edge).
+            dir="ltr"
+            className={`fixed z-[83] top-1/2 flex flex-col items-end ${sideCompact ? `${sideTagTight ? "gap-px" : "gap-0.5"} overflow-y-auto overscroll-contain [scrollbar-width:none]` : "gap-1"}`}
+            style={{
+              right: sideTool ? sidePanelPx : 0,
+              transform: "translateY(-50%)",
+              transition: `right ${SIDE_PANEL_MS}ms ease`,
+              // A phone on its side is short: the rail never runs past the screen (it scrolls if it must).
+              maxHeight: sideCompact ? "calc(100% - 8px)" : undefined,
+            }}
           >
             {SIDE_TOOLS.map((tool) => {
               const active = sideTool === tool.key;
@@ -7329,19 +7384,36 @@ export default function AlbumSpreadCanvasEditor({
                   onClick={() => setSideTool(active ? null : tool.key)}
                   aria-expanded={active}
                   title={t(tool.label)}
-                  className="flex items-center justify-center py-2.5 text-white text-[12px] font-semibold shadow-sheet transition-[width,opacity] duration-200"
+                  className={`shrink-0 flex items-center justify-center text-white font-semibold shadow-sheet transition-[width,min-width,opacity] duration-200 ${
+                    sideCompact ? `${sideTagTight ? "py-0.5" : "py-1"} px-[3px] leading-[1.1]` : "py-2.5 text-[12px]"
+                  }`}
                   style={{
-                    width: active ? SIDE_TAG_WIDTH + 6 : SIDE_TAG_WIDTH,
+                    // Compact: a two-word label wraps to a second column (see the span), so the tag
+                    // may grow wider than the rest; the others keep the same width.
+                    ...(sideCompact
+                      ? { minWidth: active ? sideTagWidth + 4 : sideTagWidth, fontSize: sideTagPx }
+                      : { width: active ? sideTagWidth + 6 : sideTagWidth }),
                     background: tool.color,
                     opacity: sideTool && !active ? 0.8 : 1,
-                    borderTopLeftRadius: 10,
-                    borderBottomLeftRadius: 10,
+                    borderTopLeftRadius: sideCompact ? 8 : 10,
+                    borderBottomLeftRadius: sideCompact ? 8 : 10,
                     borderTopRightRadius: 0,
                     borderBottomRightRadius: 0,
                     boxShadow: active ? "inset -3px 0 0 rgba(255,255,255,0.85), 0 4px 14px rgba(28,27,25,0.25)" : undefined,
                   }}
                 >
-                  <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>{t(tool.label)}</span>
+                  <span
+                    dir="auto"
+                    style={{
+                      writingMode: "vertical-rl",
+                      transform: "rotate(180deg)",
+                      // Compact: a long label ("תמונת רקע", "שמירה כתבנית") wraps into two short
+                      // columns instead of one tall tag; a single long word stays whole.
+                      ...(sideCompact ? { display: "block", textAlign: "center", maxInlineSize: "4.6em", minInlineSize: "min-content" } : {}),
+                    }}
+                  >
+                    {t(tool.label)}
+                  </span>
                 </button>
               );
             })}
