@@ -11,6 +11,40 @@ export { changesFor, type ChangelogEntry } from "@/lib/changelogEntry";
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.13.0",
+    date: "2026-11-03",
+    changes: [
+      "עורך האלבום בעיצוב חופשי: הכלים (תמונה, תמונת רקע, מסגרת, תבניות, טקסט, מסכות, עיטורים, צורות, שמירה כתבנית) עברו לתגים צבעוניים בצד ימין של המסך, במחשב ובטלפון. כל תג פותח את הכלי בפאנל בצד, ולוח העבודה מצטמצם לידו. \"שמירה\" נמצא ליד \"עמוד חדש\"",
+      "בעורך האלבום: כמה תמונות שבחרתם זזות ומשנות גודל יחד, נצמדות למסגרת הירוקה ולתמונות שלידן, ונעצרות בקצה העמוד. אפשר להוסיף צורה מאחורי קבוצת תמונות, והזום של תמונת הרקע נשאר בתוך העמוד. החלפת תמונות בין עמודים שומרת על הפנים בתוך המסגרת, וכריכה במידה משלה מוצגת בצורה שלה",
+      "לצל של טקסט באלבום אפשר לבחור צבע ומרחק",
+      "כשלקוח שולח תיקונים לעיצוב האלבום: בכרטיס האירוע מופיעה שורה שפותחת את העורך על העמוד הראשון לתיקון, ולצד העורך יש פאנל עם כל העמודים שהלקוח סימן וההערות שלו. בדף התיקונים יש גם רשימה של כל התיקונים שהלקוח שלח",
+      "מצגת התמונות בתלת מימד, גם בגלריה של הלקוחות: התמונות בסדר אקראי, עם מעברים מגוונים (קובייה, היפוך, דלתות, דף בספר, קרוסלה ועוד). גם הסרטון שמורידים מהמצגת יוצא כך",
+      "בהגדרת המצגת בוחרים תמונות מכל הגלריה או מהמועדפים, עם \"בחירת הכל\". במחשב החלון רחב, והתמונות גדולות ושלמות",
+      "בדשבורד, בלשונית \"יתרות פתוחות\": כפתור \"תזכורת תשלום\" ליד כל לקוח, עם הודעה מוכנה על היתרה שנשארה, לשליחה בוואטסאפ, ב-SMS או במייל",
+      "בכרטיס הליד רואים איפה הצעת המחיר עומדת: ממתינה לאישור הלקוח, או אושרה וממתינה לשאלון",
+    ],
+    en: [
+      "Album editor, free design: the tools (photo, background photo, frame, templates, text, masks, ornaments, shapes, save as template) moved to colored tabs on the right edge of the screen, on a computer and on a phone. Each tab opens its tool in a side panel, and the workspace shrinks beside it. \"Save\" sits next to \"New page\"",
+      "In the album editor: several selected photos move and resize together, snap to the green frame and to the photos beside them, and stop at the page edge. You can add a shape behind a group of photos, and zooming the background photo stays inside the page. Swapping photos between pages keeps the faces inside the frame, and a cover with its own size shows in its own shape",
+      "You can choose a color and a distance for album text shadows",
+      "When a client sends corrections to the album design: the event card shows a line that opens the editor on the first page to fix, with a panel beside the editor showing every page the client marked and their notes. The corrections page also lists every round of corrections the client sent",
+      "The photo slideshow is now in 3D, in your clients' galleries too: the photos in a random order, with varied transitions (cube, flip, doors, book page, carousel and more). The video you download from the slideshow comes out the same way",
+      "When setting up the slideshow, pick photos from the whole gallery or from the favorites, with \"Select all\". On a computer the window is wide, with large, uncropped photos",
+      "On the dashboard, in the \"Open balances\" tab: a \"Payment reminder\" button next to each client, with a ready message about the remaining balance, to send by WhatsApp, SMS or email",
+      "The lead card shows where the quote stands: waiting for the client's approval, or approved and waiting for the questionnaire",
+    ],
+    ru: [
+      "Редактор альбома, свободный дизайн: инструменты (фото, фоновое фото, рамка, шаблоны, текст, маски, украшения, фигуры, сохранить как шаблон) перенесены на цветные вкладки у правого края экрана, на компьютере и на телефоне. Каждая вкладка открывает свой инструмент в боковой панели, а рабочая область сужается рядом с ней. «Сохранить» — рядом с «Новая страница»",
+      "В редакторе альбома: несколько выбранных фото перемещаются и меняют размер вместе, прилипают к зелёной рамке и к соседним фото и останавливаются у края страницы. Можно добавить фигуру за группой фото, а увеличение фонового фото остаётся внутри страницы. Обмен фото между страницами сохраняет лица внутри рамки, а обложка своего размера показывается в своей форме",
+      "Для тени текста в альбоме можно выбрать цвет и расстояние",
+      "Когда клиент присылает правки к дизайну альбома: в карточке мероприятия появляется строка, которая открывает редактор на первой странице для правки, а рядом с редактором — панель со всеми страницами, отмеченными клиентом, и его комментариями. На странице правок также есть список всех правок, которые прислал клиент",
+      "Слайд-шоу фотографий теперь в 3D, и в галерее ваших клиентов тоже: фото в случайном порядке, с разнообразными переходами (куб, переворот, двери, страница книги, карусель и другие). Видео, которое скачивается из слайд-шоу, выходит так же",
+      "При настройке слайд-шоу выбирайте фото из всей галереи или из избранного, с кнопкой «Выбрать все». На компьютере окно широкое, а фото крупные и не обрезанные",
+      "В панели аналитики, на вкладке «Открытые остатки»: кнопка «Напоминание об оплате» рядом с каждым клиентом, с готовым сообщением об оставшейся сумме, для отправки в WhatsApp, по SMS или по email",
+      "В карточке лида видно, на каком этапе предложение: ждёт подтверждения клиента или подтверждено и ждёт анкеты",
+    ],
+  },
+  {
     version: "2.12.10",
     date: "2026-10-26",
     changes: [

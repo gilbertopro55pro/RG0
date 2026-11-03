@@ -5,7 +5,6 @@ import type { EventPaymentRow, Photographer } from "@/lib/types";
 import type { PackageType } from "@/lib/stages";
 import AnalyticsView from "@/components/AnalyticsView";
 import { hasAppAccess } from "@/lib/subscription";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { PAYMENT_REMINDER_LOG_MARK } from "@/lib/paymentReminder";
 
 export type AnalyticsEvent = {
@@ -27,10 +26,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const supabase = await createClient();
   const user = await getSessionUser();
 
-  // The collection tools in the open balances tab: a payment reminder per client, admin only for
-  // now (owner, 2026-10-19). The last reminder per event comes from the event log, which also has
-  // the ones sent from the home screen's payment reminder prompt. Read alongside the rest.
-  const collection = user?.email === ADMIN_EMAIL;
+  // The collection tools in the open balances tab: a payment reminder per client (owner,
+  // 2026-10-19). The last reminder per event comes from the event log, which also has the ones sent
+  // from the home screen's payment reminder prompt. Read alongside the rest.
   const [{ data: photographer }, { data: events }, { data: payments }, { data: logged }] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase
@@ -38,15 +36,13 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       .select("id, event_date, package, client_name, closed_at, closed_balance_month, client_phone, client_email, client_access_token, client_lang")
       .returns<AnalyticsEvent[]>(),
     supabase.from("event_payments").select("*").returns<EventPaymentRow[]>(),
-    collection
-      ? supabase
-          .from("event_notifications")
-          .select("event_id, created_at")
-          .ilike("text", `%${PAYMENT_REMINDER_LOG_MARK}%`)
-          .order("created_at", { ascending: false })
-          .limit(500)
-          .returns<{ event_id: string | null; created_at: string }[]>()
-      : Promise.resolve({ data: [] as { event_id: string | null; created_at: string }[] }),
+    supabase
+      .from("event_notifications")
+      .select("event_id, created_at")
+      .ilike("text", `%${PAYMENT_REMINDER_LOG_MARK}%`)
+      .order("created_at", { ascending: false })
+      .limit(500)
+      .returns<{ event_id: string | null; created_at: string }[]>(),
   ]);
   if (!photographer) redirect("/");
   if (!hasAppAccess(photographer)) redirect("/billing");
@@ -69,7 +65,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         initialMonth={now.getMonth() + 1}
         today={today}
         initialTab={tab === "balances" ? "balances" : "overview"}
-        collection={collection ? { lastReminders, signature: photographer.whatsapp_signature, senderName: photographer.name } : null}
+        collection={{ lastReminders, signature: photographer.whatsapp_signature, senderName: photographer.name }}
       />
     </div>
   );

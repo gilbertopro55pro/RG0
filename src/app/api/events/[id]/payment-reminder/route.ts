@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { PAYMENT_REMINDER_CHANNELS, type PaymentReminderChannel } from "@/lib/paymentReminder";
 
 // Records a payment reminder sent from the dashboard's open balances (lib/paymentReminder.ts; the
@@ -21,7 +20,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
-  if (user.email !== ADMIN_EMAIL) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
   const body = (await request.json().catch(() => null)) as { channel?: unknown } | null;
   const channel = PAYMENT_REMINDER_CHANNELS.find((c) => c === body?.channel);
   if (!channel) return NextResponse.json({ error: "ערוץ לא תקין" }, { status: 400 });

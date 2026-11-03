@@ -466,11 +466,9 @@ export default function LeadsView({
               </div>
             )}
 
-            {/* Admin-only for now (see the standing "עדכון אדמין" staged-rollout process) — the
-                client-side approve+questionnaire flow on /quotes/[token] only actually works for
-                this account, so showing its pipeline state to any other photographer would just
-                be confusing (their clients still see the old call-us-to-confirm page). */}
-            {isAdmin && lead.quoted_amount && !lead.converted_event_id && (
+            {/* Where the quote stands with the client: waiting for the approval, or approved and
+                waiting for the questionnaire (/quotes/[token], open to everyone since 2026-10-01). */}
+            {lead.quoted_amount && !lead.converted_event_id && (
               vivid ? (
                 <div className="mb-2.5">
                   <ToneTag tone={lead.quote_approved_at ? "paid" : "pending"}>

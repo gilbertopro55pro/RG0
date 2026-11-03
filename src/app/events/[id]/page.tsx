@@ -24,7 +24,6 @@ import { designToolsAllowed } from "@/lib/designTools";
 import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
 import { eventQuoteHistoryId, type EventQuote } from "@/lib/eventQuote";
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { mergeCorrectionPages, openCorrections, orderCorrectionPages, type CorrectionPage } from "@/lib/albumCorrections";
 
 // The album and its corrections, embedded in the gallery query for the admin's event card line
@@ -41,7 +40,6 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   const supabase = await createClient();
   const user = await getSessionUser();
   const serviceRole = createServiceRoleClient();
-  const isAdmin = user?.email === ADMIN_EMAIL;
 
   // The whole page in one round trip (it used to be up to six, one after another). The owner-only
   // queries start right away as well and are dropped below for a team member; RLS scopes each of
@@ -111,7 +109,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
       .from("galleries")
       .select(
         "*, photo_count:gallery_photos!gallery_photos_gallery_id_fkey(count), cover:gallery_photos!galleries_cover_photo_fk(id, gallery_id, storage_path), first_photo:gallery_photos!gallery_photos_gallery_id_fkey(id, storage_path)" +
-          (isAdmin ? ", album:gallery_albums(status, sent_at, spreads:gallery_album_spreads(id, sort_order), corrections:gallery_album_corrections(id, pages, created_at))" : "")
+          ", album:gallery_albums(status, sent_at, spreads:gallery_album_spreads(id, sort_order), corrections:gallery_album_corrections(id, pages, created_at))"
       )
       .eq("event_id", id)
       .order("sort_order", { referencedTable: "first_photo", ascending: true, nullsFirst: false })
@@ -213,7 +211,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
       const { photo_count, cover, first_photo, album: albumEmbed, ...galleryOnly } = galleryRow;
       gallery = galleryOnly;
       const albumRow = Array.isArray(albumEmbed) ? albumEmbed[0] : albumEmbed;
-      if (isAdmin && albumRow) {
+      if (albumRow) {
         const order = [...(albumRow.spreads ?? [])].sort((a, b) => a.sort_order - b.sort_order).map((sp) => sp.id);
         const pages = orderCorrectionPages(mergeCorrectionPages(openCorrections(albumRow.corrections ?? [], albumRow)), order);
         if (pages.length) {

@@ -7,7 +7,6 @@ import { getPublicPreviewUrl, getSignedDownloadUrls } from "@/lib/storage";
 import { photographerOriginalUrl } from "@/lib/galleryPhotoUrls";
 import { correctionRounds, mergeCorrectionPages, orderCorrectionPages, type CorrectionPage, type CorrectionRound } from "@/lib/albumCorrections";
 import { loadAlbumCorrections, type CorrectionSubmissionRow } from "@/lib/albumCorrectionRounds";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow } from "@/lib/types";
 import { getLang, getT } from "@/i18n/server";
 import { dateLocale } from "@/i18n/config";
@@ -135,24 +134,21 @@ export default async function AlbumCorrectionsPage({ params }: { params: Promise
     size: { width_cm: Number(spread.width_cm ?? album.width_cm), height_cm: Number(spread.height_cm ?? album.height_cm) },
   }));
 
-  // The admin's additions (owner, 2026-11-02, "עדכון אדמין"): every round of corrections, to come
-  // back to, and "לעריכת האלבום" opens the editor on the first corrected page with the corrections
-  // beside it (GalleryManageView, AlbumCorrectionsPanel).
-  const isAdmin = user.email === ADMIN_EMAIL;
-  const history: CorrectionRoundLink[] | null = isAdmin
-    ? rounds.map((r) => {
-        const last = r.submissions[r.submissions.length - 1];
-        return {
-          id: last.id,
-          sentAt: when(last.created_at),
-          pages: mergeCorrectionPages(r.submissions).length,
-          open: r.open,
-          current: r === round,
-        };
-      })
-    : null;
+  // Every round of corrections, to come back to (owner, 2026-11-02), and "לעריכת האלבום" opens the
+  // editor on the first corrected page with the corrections beside it (GalleryManageView,
+  // AlbumCorrectionsPanel).
+  const history: CorrectionRoundLink[] = rounds.map((r) => {
+    const last = r.submissions[r.submissions.length - 1];
+    return {
+      id: last.id,
+      sentAt: when(last.created_at),
+      pages: mergeCorrectionPages(r.submissions).length,
+      open: r.open,
+      current: r === round,
+    };
+  });
   const editHref =
-    isAdmin && round.open && pages.length
+    round.open && pages.length
       ? `/galleries/${gallery.id}?openAlbum=1&corrections=1&spread=${pages[0].spread.id}`
       : `/galleries/${gallery.id}?openAlbum=1`;
   const lastPart = round.submissions[round.submissions.length - 1];

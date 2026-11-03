@@ -84,7 +84,6 @@ import GalleryFtpSection from "@/components/GalleryFtpSection";
 import { detectFacesInImageUrl, clusterFaces, type FaceBox } from "@/lib/faceRecognition";
 import { GALLERY_EXPIRY_OPTIONS, GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, VIDEO_MAX_BYTES_BY_TIER, type SubscriptionPlan, type SubscriptionTier } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
-import { slideshow3dFor } from "@/lib/slideshow3d/access";
 import { ALLOWED_ACCEPT, isAllowedImageFile, isAllowedImageName } from "@/lib/imageUpload";
 import { readActiveUploadLock, requestActiveUploadCancel, type ActiveUploadLock } from "@/lib/activeUploadLock";
 import {
@@ -576,7 +575,7 @@ export default function GalleryManageView({
   // shown or hidden by its tab, and kept as it was while the photographer moves between pages.
   // Open from the start when the link asks for the corrections (?corrections=1, the deep link below).
   const [correctionsPanelOpen, setCorrectionsPanelOpen] = useState(
-    () => photographerEmail === ADMIN_EMAIL && searchParams.get("openAlbum") === "1" && searchParams.get("corrections") === "1"
+    () => searchParams.get("openAlbum") === "1" && searchParams.get("corrections") === "1"
   );
   const switchSpreadRef = useRef<((spreadId: string) => void) | null>(null);
   // The album editor's "עריכת תמונה" panel drag offset — owned HERE (not inside
@@ -632,7 +631,7 @@ export default function GalleryManageView({
   // The admin's corrections link (?openAlbum=1&corrections=1&spread=<id>, owner 2026-11-02) opens the
   // editor on that page through this same resume, once the album's pages have loaded.
   const correctionsLinkSpread = (() => {
-    if (photographerEmail !== ADMIN_EMAIL || searchParams.get("openAlbum") !== "1" || searchParams.get("corrections") !== "1") return null;
+    if (searchParams.get("openAlbum") !== "1" || searchParams.get("corrections") !== "1") return null;
     const id = searchParams.get("spread");
     return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
   })();
@@ -1498,7 +1497,7 @@ export default function GalleryManageView({
     }
   };
   useEffect(() => {
-    if (!photoSwapMode || photographerEmail !== ADMIN_EMAIL) return;
+    if (!photoSwapMode) return;
     void import("@/lib/faceRecognition").then((m) => m.warmFaceBoxDetector()).catch(() => {});
     const ids = [...new Set(albumSpreadsRef.current.flatMap((sp) => (sp.elements ?? []).flatMap((el) => (el.type === "photo" && el.photoId ? [el.photoId] : []))))].filter(
       (id) => !swapFaces.known(id)
@@ -1591,7 +1590,7 @@ export default function GalleryManageView({
     qualityFocusTimer.current = setTimeout(() => setQualityFocus(null), 5000);
   };
   const swapPhotos = async (a: SwapPick, b: SwapPick) => {
-    if (photographerEmail === ADMIN_EMAIL && album) {
+    if (album) {
       const ids = [photoIdAt(a), photoIdAt(b)].filter((id): id is string => !!id);
       // Faces still being found get a short moment (usually done by then, since detection starts
       // the moment a photo is pointed at), then the swap goes ahead without them.
@@ -1886,41 +1885,27 @@ export default function GalleryManageView({
   // The client's latest marked corrections (gallery_album_corrections, the client's "צריך תיקונים"),
   // linked from the status line while the album waits for them.
   const [albumCorrectionId, setAlbumCorrectionId] = useState<string | null>(null);
-  // The admin's (owner, 2026-11-02): every page the client sent since the design was last sent, for
-  // the panel beside the editor; and the corrections page stays linked after they're handled, to come
-  // back to them (it lists every round).
-  const isAdminAccount = photographerEmail === ADMIN_EMAIL;
+  // Every page the client sent since the design was last sent (owner, 2026-11-02), for the panel
+  // beside the editor; and the corrections page stays linked after they're handled, to come back to
+  // them (it lists every round).
   const albumSentAt = (album as (GalleryAlbumRow & { sent_at?: string | null }) | null)?.sent_at ?? null;
   const [openCorrectionRows, setOpenCorrectionRows] = useState<{ id: string; pages: CorrectionPage[]; created_at: string }[]>([]);
   useEffect(() => {
-    if (!album || (!isAdminAccount && album.status !== "changes_requested")) return;
+    if (!album) return;
     let cancelled = false;
     const albumNow = album;
-    if (!isAdminAccount) {
-      supabase
-        .from("gallery_album_corrections")
-        .select("id")
-        .eq("album_id", albumNow.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle<{ id: string }>()
-        .then(({ data }) => {
-          if (!cancelled) setAlbumCorrectionId(data?.id ?? null);
-        });
-    } else {
-      supabase
-        .from("gallery_album_corrections")
-        .select("id, pages, created_at")
-        .eq("album_id", albumNow.id)
-        .order("created_at", { ascending: false })
-        .limit(200)
-        .returns<{ id: string; pages: CorrectionPage[]; created_at: string }[]>()
-        .then(({ data }) => {
-          if (cancelled) return;
-          setAlbumCorrectionId(data?.[0]?.id ?? null);
-          setOpenCorrectionRows(openCorrections(data ?? [], { status: albumNow.status, sent_at: albumSentAt }));
-        });
-    }
+    supabase
+      .from("gallery_album_corrections")
+      .select("id, pages, created_at")
+      .eq("album_id", albumNow.id)
+      .order("created_at", { ascending: false })
+      .limit(200)
+      .returns<{ id: string; pages: CorrectionPage[]; created_at: string }[]>()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setAlbumCorrectionId(data?.[0]?.id ?? null);
+        setOpenCorrectionRows(openCorrections(data ?? [], { status: albumNow.status, sent_at: albumSentAt }));
+      });
     return () => {
       cancelled = true;
     };
@@ -1941,7 +1926,7 @@ export default function GalleryManageView({
         }),
       })
     : null;
-  const showCorrectionsPanel = isAdminAccount && !!canvasEditorTarget && correctionPages.length > 0 && !albumNeedsRotate;
+  const showCorrectionsPanel = !!canvasEditorTarget && correctionPages.length > 0 && !albumNeedsRotate;
   // On a computer the editor shrinks beside the panel; below 1024px the editor's card is sized in vw,
   // so the panel goes over it instead.
   const correctionsOnDesktop = albumViewportSize.w >= 1024;
@@ -4862,7 +4847,7 @@ export default function GalleryManageView({
           saving={savingSlideshow}
           onSave={saveSlideshow}
           onClose={() => setSlideshowManageOpen(false)}
-          roomy={photographerEmail === ADMIN_EMAIL}
+          roomy
           onSelectMany={(ids, on) =>
             setSlideshowPhotoIds((prev) => {
               const next = new Set(prev);
@@ -4880,7 +4865,7 @@ export default function GalleryManageView({
         <GallerySlideshow
           photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: resizedPhotoUrl(p, 1920) }))}
           onClose={() => setSlideshowPreviewOpen(false)}
-          fx3d={slideshow3dFor(photographerEmail)}
+          fx3d
           video={{
             // From this site (the canvas can't take the CDN's previews): the server-resized photo.
             photoUrl: (id) => photographerImageUrl(gallery.id, id, 1920),
@@ -5360,7 +5345,7 @@ export default function GalleryManageView({
                             </Link>
                           </>
                         )}
-                        {isAdminAccount && correctionPages.length > 0 && (
+                        {correctionPages.length > 0 && (
                           <>
                             {" · "}
                             <button onClick={openCorrectionsInEditor} className="underline font-bold">
@@ -5370,8 +5355,8 @@ export default function GalleryManageView({
                         )}
                       </>
                     )}
-                    {/* The client's corrections stay a click away after they're handled (admin). */}
-                    {isAdminAccount && album.status !== "changes_requested" && albumCorrectionId && (
+                    {/* The client's corrections stay a click away after they're handled. */}
+                    {album.status !== "changes_requested" && albumCorrectionId && (
                       <>
                         {" · "}
                         <Link href={`/album-corrections/${albumCorrectionId}`} className="underline font-bold">
@@ -5596,7 +5581,7 @@ export default function GalleryManageView({
                               its own shape, at the same height as the other pages (admin, owner
                               2026-10-20; everyone else still sees it in the album's shape). */}
                           {(() => {
-                            const ownSize = photographerEmail === ADMIN_EMAIL && spread.width_cm && spread.height_cm ? { width_cm: spread.width_cm, height_cm: spread.height_cm } : null;
+                            const ownSize = spread.width_cm && spread.height_cm ? { width_cm: spread.width_cm, height_cm: spread.height_cm } : null;
                             const widthShare = ownSize ? Math.min(1, ownSize.width_cm / ownSize.height_cm / (album.width_cm / album.height_cm)) : 1;
                             return (
                           <div className="relative mx-auto" style={widthShare < 1 ? { width: `${widthShare * 100}%` } : undefined}>
@@ -5605,7 +5590,7 @@ export default function GalleryManageView({
                             album={ownSize ? { ...album, ...ownSize } : album}
                             photos={photos}
                             customOrnaments={customOrnaments}
-                            exactText={photographerEmail === ADMIN_EMAIL}
+                            exactText
                             onClick={() => {
                               if (!photoSwapMode) setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" });
                             }}
@@ -5635,8 +5620,8 @@ export default function GalleryManageView({
                                       aria-label={picked ? t("התמונה שנבחרה להחלפה") : t("בחירת תמונה להחלפה")}
                                       // The admin's swap finds this photo's faces while the pointer is
                                       // still on its way to the click, so the swap doesn't wait for them.
-                                      onPointerEnter={photographerEmail === ADMIN_EMAIL && el.photoId ? () => void swapFaces.facesOf(el.photoId!) : undefined}
-                                      onPointerDown={photographerEmail === ADMIN_EMAIL && el.photoId ? () => void swapFaces.facesOf(el.photoId!) : undefined}
+                                      onPointerEnter={el.photoId ? () => void swapFaces.facesOf(el.photoId!) : undefined}
+                                      onPointerDown={el.photoId ? () => void swapFaces.facesOf(el.photoId!) : undefined}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (picked) return setPhotoSwapPick(null);
