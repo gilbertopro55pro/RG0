@@ -131,10 +131,21 @@ function getShadowSprite(): HTMLCanvasElement | null {
   c.height = SPRITE;
   const x = c.getContext("2d");
   if (!x) return null;
-  x.shadowColor = "rgba(0,0,0,1)";
-  x.shadowBlur = 22;
-  x.fillStyle = "#000";
-  x.fillRect(SPRITE_INSET, SPRITE_INSET, SPRITE - 2 * SPRITE_INSET, SPRITE - 2 * SPRITE_INSET);
+  // Built pixel by pixel (black, fading out with a Gaussian past the inner rectangle), not with
+  // shadowBlur: that one is drawn differently by each browser, and without a GPU it came out as a
+  // hard-edged dark slab around the photo.
+  const data = x.createImageData(SPRITE, SPRITE);
+  const lo = SPRITE_INSET;
+  const hi = SPRITE - SPRITE_INSET;
+  for (let py = 0; py < SPRITE; py++) {
+    for (let px = 0; px < SPRITE; px++) {
+      const dx = Math.max(lo - (px + 0.5), 0, px + 0.5 - hi);
+      const dy = Math.max(lo - (py + 0.5), 0, py + 0.5 - hi);
+      const d = Math.hypot(dx, dy);
+      data.data[(py * SPRITE + px) * 4 + 3] = Math.round(255 * Math.exp(-((d / 13) ** 2)));
+    }
+  }
+  x.putImageData(data, 0, 0);
   shadowSprite = c;
   return c;
 }
@@ -157,9 +168,8 @@ function drawShadow(ctx: Ctx2D, cam: Camera, g: PlaneGeom, strength: number) {
   const w = x1 - x0;
   const h = y1 - y0;
   if (w < 2 || h < 2) return;
-  // The sprite's inner rectangle lands a little inside the photo's box; its blur spreads by about
-  // 5% around it.
-  const spread = Math.max(w, h) * 0.05 + 6;
+  // The sprite's inner rectangle is the photo's box; its soft edge spreads around it.
+  const spread = Math.max(w, h) * 0.012;
   const sx = (w + 2 * spread) / (SPRITE - 2 * SPRITE_INSET);
   const sy = (h + 2 * spread) / (SPRITE - 2 * SPRITE_INSET);
   const drop = cam.H * 0.012;
