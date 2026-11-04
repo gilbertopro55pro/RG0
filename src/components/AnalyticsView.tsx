@@ -18,6 +18,7 @@ import { dateLocale, isLang, type Lang } from "@/i18n/config";
 import ClientMessageSheet from "@/components/ClientMessageSheet";
 import ToneTag from "@/components/ToneTag";
 import { useVivid } from "@/components/VividProvider";
+import { reportingPeriod, vatByReportingPeriod, vatTotal, type VatReceipt } from "@/lib/receiptVat";
 
 // The collection tools in the open balances tab (admin only for now, owner 2026-10-19).
 type Collection = { lastReminders: Record<string, string>; signature: string | null; senderName: string | null };
@@ -52,6 +53,7 @@ export default function AnalyticsView({
   today,
   initialTab = "overview",
   collection = null,
+  vat = null,
 }: {
   events: AnalyticsEvent[];
   payments: EventPaymentRow[];
@@ -61,6 +63,9 @@ export default function AnalyticsView({
   today: string;
   initialTab?: "overview" | "balances";
   collection?: Collection | null;
+  // VAT of the receipts issued from the system (admin only for now, owner 2026-11-04). null hides
+  // the card: not admin, or an exempt business that never issued a receipt with VAT.
+  vat?: { receipts: VatReceipt[]; licensed: boolean } | null;
 }) {
   const t = useT();
   const lang = useLang();
@@ -437,6 +442,17 @@ export default function AnalyticsView({
         </div>
       </section>
 
+      {vat && (
+        <VatCard
+          receipts={vat.receipts}
+          licensed={vat.licensed}
+          scope={scope}
+          year={selectedYear}
+          month={selectedMonth}
+          periodLabel={periodLabel}
+        />
+      )}
+
       <button
         onClick={() => switchTab("balances")}
         className="w-full text-start rounded-2xl p-4 mb-5 bg-card flex items-center justify-between gap-3"
@@ -635,6 +651,80 @@ export default function AnalyticsView({
 
 // The "יתרות פתוחות" tab: the total up front, then one row per client, linked to the event. Events
 // that already took place come first, since that money is due now.
+// The total VAT of the receipts issued from the system as עוסק מורשה (owner, 2026-11-04): for the
+// month or year on screen, with the two-month VAT reporting period (lib/receiptVat.ts). The amount
+// on a receipt includes VAT, so the VAT is 18/118 of it, kept on the receipt when it's issued.
+function VatCard({
+  receipts,
+  licensed,
+  scope,
+  year,
+  month,
+  periodLabel,
+}: {
+  receipts: VatReceipt[];
+  licensed: boolean;
+  scope: "month" | "year";
+  year: number;
+  month: number;
+  periodLabel: string;
+}) {
+  const t = useT();
+  const lang = useLang();
+  const locale = dateLocale(lang);
+  const money2 = (n: number) => `₪${n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const money = (n: number) => (Number.isInteger(n) ? `₪${n.toLocaleString(locale)}` : money2(n));
+  const monthName = (m: number) => t(HEBREW_MONTHS[m - 1]);
+  const key = `${year}-${String(month).padStart(2, "0")}`;
+  const total = vatTotal(receipts, scope === "year" ? (m) => m.startsWith(`${year}-`) : new Set([key]));
+  const period = reportingPeriod(year, month);
+  const periodTotal = vatTotal(receipts, period.months);
+  const periods = scope === "year" ? vatByReportingPeriod(receipts, year) : [];
+  return (
+    <section aria-label={t("מע״מ")} className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm font-semibold min-w-0">{t("מע״מ בקבלות: {period}", { period: periodLabel })}</span>
+        <span className="text-[22px] font-extrabold font-data shrink-0">{money2(total.vat)}</span>
+      </div>
+      <div className="text-[13px] text-ink-soft mt-1">
+        {total.count > 1
+          ? t("{n} קבלות בסך {gross}, כולל מע״מ. לפני מע״מ: {net}", { n: total.count, gross: money(total.gross), net: money(total.net) })
+          : total.count === 1
+            ? t("קבלה אחת בסך {gross}, כולל מע״מ. לפני מע״מ: {net}", { gross: money(total.gross), net: money(total.net) })
+            : t("לא הופקו בתקופה הזו קבלות עם מע״מ")}
+      </div>
+      {scope === "month" && (
+        <div className="flex items-baseline justify-between gap-3 mt-3 pt-3 border-t border-line text-[13px]">
+          <span className="text-ink-soft min-w-0">{t("תקופת הדיווח {from}–{to}", { from: monthName(period.from), to: monthName(period.to) })}</span>
+          <span className="font-bold font-data shrink-0">{money2(periodTotal.vat)}</span>
+        </div>
+      )}
+      {periods.length > 0 && (
+        <ul className="mt-3 pt-3 border-t border-line space-y-1.5 text-[13px]">
+          {periods.map((p) => (
+            <li key={p.from} className="flex items-baseline justify-between gap-3">
+              <span className="text-ink-soft min-w-0">
+                {monthName(p.from)}–{monthName(p.to)}
+                {p.total.count > 0 && <span className="font-data"> · {p.total.count === 1 ? t("קבלה אחת") : t("{n} קבלות", { n: p.total.count })}</span>}
+              </span>
+              <span className="font-bold font-data shrink-0">{money2(p.total.vat)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {total.exemptCount > 0 && (
+        <p className="text-xs text-ink-soft mt-2">
+          {total.exemptCount === 1
+            ? t("קבלה אחת בתקופה הופקה כעוסק פטור, ואין בה מע״מ.")
+            : t("{n} קבלות בתקופה הופקו כעוסק פטור, ואין בהן מע״מ.", { n: total.exemptCount })}
+        </p>
+      )}
+      {!licensed && <p className="text-xs text-ink-soft mt-2">{t("העסק מוגדר עכשיו כעוסק פטור. מוצג המע״מ של הקבלות שהופקו כעוסק מורשה.")}</p>}
+      <p className="text-xs text-ink-soft mt-2">{t("לפי הקבלות שהופקו במערכת בלבד: 18% מתוך הסכום ששולם.")}</p>
+    </section>
+  );
+}
+
 function OpenBalancesTab({
   balances,
   today,

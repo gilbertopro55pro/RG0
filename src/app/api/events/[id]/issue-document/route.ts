@@ -148,7 +148,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await supabase.from("event_payments").update(patch).eq("event_id", eventId);
 
     // A short link for the message (myframeflow.com/r/<token>) instead of the provider's long URL.
-    const shortLink = await createReceiptLink(request, { photographerId: user.id, eventId, documentUrl: documentLink, amount, customerName });
+    const shortLink = await createReceiptLink(request, {
+      photographerId: user.id,
+      eventId,
+      documentUrl: documentLink,
+      amount,
+      customerName,
+      taxStatus: photographer.business_tax_status,
+    });
     const ils = `₪${amount.toLocaleString("he-IL")}`;
     // The fixed client-message shape (lib/clientMessageFormat.ts), signed with the name as before.
     const shareText = formatClientMessage({

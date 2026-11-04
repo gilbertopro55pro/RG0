@@ -6,6 +6,9 @@ import type { PackageType } from "@/lib/stages";
 import AnalyticsView from "@/components/AnalyticsView";
 import { hasAppAccess } from "@/lib/subscription";
 import { PAYMENT_REMINDER_LOG_MARK } from "@/lib/paymentReminder";
+import { ADMIN_EMAIL } from "@/lib/admin";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { showsVat, vatReceipts, type ReceiptLinkVatRow } from "@/lib/receiptVat";
 
 export type AnalyticsEvent = {
   id: string;
@@ -25,11 +28,15 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const { tab } = await searchParams;
   const supabase = await createClient();
   const user = await getSessionUser();
+  // VAT of the receipts issued from the system (owner, 2026-11-04, "עדכון אדמין": admin only for
+  // now). `receipt_links` is server-only (no RLS policies), so it's read with the service role, for
+  // this account alone.
+  const vatAllowed = user?.email === ADMIN_EMAIL;
 
   // The collection tools in the open balances tab: a payment reminder per client (owner,
   // 2026-10-19). The last reminder per event comes from the event log, which also has the ones sent
   // from the home screen's payment reminder prompt. Read alongside the rest.
-  const [{ data: photographer }, { data: events }, { data: payments }, { data: logged }] = await Promise.all([
+  const [{ data: photographer }, { data: events }, { data: payments }, { data: logged }, { data: receiptRows }] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase
       .from("events")
@@ -43,6 +50,13 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       .order("created_at", { ascending: false })
       .limit(500)
       .returns<{ event_id: string | null; created_at: string }[]>(),
+    vatAllowed
+      ? createServiceRoleClient()
+          .from("receipt_links")
+          .select("created_at, amount, tax_status, vat_amount")
+          .eq("photographer_id", user!.id)
+          .returns<ReceiptLinkVatRow[]>()
+      : Promise.resolve({ data: null as ReceiptLinkVatRow[] | null }),
   ]);
   if (!photographer) redirect("/");
   if (!hasAppAccess(photographer)) redirect("/billing");
@@ -56,6 +70,10 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const lastReminders: Record<string, string> = {};
   for (const r of logged ?? []) if (r.event_id && !lastReminders[r.event_id]) lastReminders[r.event_id] = r.created_at;
 
+  // Month keys are computed here, on the Israel calendar, so the page and the browser agree.
+  const receipts = vatReceipts(receiptRows ?? []);
+  const vat = vatAllowed && showsVat(photographer.business_tax_status, receipts) ? { receipts, licensed: photographer.business_tax_status === "licensed" } : null;
+
   return (
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <AnalyticsView
@@ -66,6 +84,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         today={today}
         initialTab={tab === "balances" ? "balances" : "overview"}
         collection={{ lastReminders, signature: photographer.whatsapp_signature, senderName: photographer.name }}
+        vat={vat}
       />
     </div>
   );
