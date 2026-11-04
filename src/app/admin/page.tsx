@@ -8,7 +8,7 @@ import { recurringAmounts } from "@/lib/recurringCharges";
 
 export type AdminPhotographerRow = Pick<
   Photographer,
-  "id" | "name" | "email" | "plan" | "subscription_status" | "created_at" | "current_period_end" | "cancel_at_period_end" | "pending_plan"
+  "id" | "name" | "email" | "plan" | "subscription_status" | "created_at" | "current_period_end" | "cancel_at_period_end" | "pending_plan" | "pending_plan_effective_at"
 > & {
   has_recurring: boolean;
   /** What the standing order on file charges per cycle (its last charge), when known. */
@@ -25,7 +25,7 @@ export default async function AdminPage() {
   const serviceRole = createServiceRoleClient();
   const { data: photographers } = await serviceRole
     .from("photographers")
-    .select("id, name, email, plan, subscription_status, created_at, current_period_end, cancel_at_period_end, pending_plan, payplus_recurring_uid")
+    .select("id, name, email, plan, subscription_status, created_at, current_period_end, cancel_at_period_end, pending_plan, pending_plan_effective_at, payplus_recurring_uid")
     .order("created_at", { ascending: false })
     .returns<(Omit<AdminPhotographerRow, "has_recurring" | "recurring_amount"> & { payplus_recurring_uid: string | null })[]>();
   const amounts = await recurringAmounts(serviceRole, photographers ?? []);

@@ -52,3 +52,15 @@ export function israelIsoDateString(date: Date): string {
   const [dd, mm, yyyy] = israelDateString(date).split("/");
   return `${yyyy}-${mm}-${dd}`;
 }
+
+// When a monthly standing order must be cancelled before the switch to another price (a plan switch
+// the customer scheduled, or an admin price change): 2 days before the paid month ends.
+// PayPlus charges a renewal in the early morning of the renewal date (01:30–02:00 UTC in the charges
+// so far), and the subscription-lifecycle cron that cancels it runs once a day at 07:00 UTC. With 1
+// day, a period ending after 07:00 UTC made the switch due only after the cron of the day before had
+// run, so the next run came after the renewal had already charged the old price.
+export const MONTHLY_SWITCH_LEAD_DAYS = 2;
+
+export function monthlySwitchDate(periodEnd: Date): Date {
+  return new Date(periodEnd.getTime() - MONTHLY_SWITCH_LEAD_DAYS * 24 * 60 * 60 * 1000);
+}

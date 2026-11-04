@@ -24,6 +24,8 @@ const dict: AreaDict = {
       "Hi {name},\n\nYour Gilberto {plan} subscription will renew automatically on {date} for ₪{amount}.\nIf you'd like to turn off auto-renewal, you can do it any time in Settings > Subscription.\n\nThank you for being part of Gilberto!",
     "זהו החיוב עבור החודשים ה-11 וה-12 של תקופת המנוי הקודמת שלך, בעקבות המעבר למסלול {plan} שביקשת, במקום שיהיו חינמיים כמו במסלול הקודם. החל מהמחזור שאחרי כן תחויב/י ₪{price} מדי חודש כמסלול {plan} רגיל.":
       "This is the charge for months 11 and 12 of your previous subscription period, following the switch to the {plan} plan you requested, instead of them being free as on your previous plan. From the following cycle on, you'll be charged ₪{price} a month as a regular {plan} plan.",
+    "החל מהמחזור הבא, המנוי שלך במסלול {plan} יהיה בסך ₪{amount} לחודש. הוראת הקבע הקודמת הסתיימה, ולכן כדי שהמנוי ימשיך בלי הפסקה, נשמח שתשלימו את התשלום בקישור עד {date}.":
+      "Starting next cycle, your {plan} subscription will be ₪{amount} a month. Your previous standing order has ended, so to keep your subscription running without a break, please complete the payment at the link by {date}.",
     "כפי שביקשת, המנוי שלך עובר למסלול {plan} (₪{amount}) החל מהמחזור הבא.":
       "As you requested, your subscription is moving to the {plan} plan (₪{amount}) starting next cycle.",
     "המעבר למסלול החדש שלך | נדרשת השלמת תשלום": "Your new plan | Payment needs to be completed",
@@ -60,6 +62,8 @@ const dict: AreaDict = {
       "Здравствуйте, {name}!\n\nВаша подписка Гилберто ({plan}) будет автоматически продлена {date} на сумму ₪{amount}.\nЕсли вы хотите отключить автопродление, это можно сделать в любое время в разделе Настройки > Подписка.\n\nСпасибо, что вы с Гилберто!",
     "זהו החיוב עבור החודשים ה-11 וה-12 של תקופת המנוי הקודמת שלך, בעקבות המעבר למסלול {plan} שביקשת, במקום שיהיו חינמיים כמו במסלול הקודם. החל מהמחזור שאחרי כן תחויב/י ₪{price} מדי חודש כמסלול {plan} רגיל.":
       "Это оплата за 11-й и 12-й месяцы вашего предыдущего периода подписки в связи с запрошенным вами переходом на тариф {plan}: на прежнем тарифе они были бы бесплатными. Начиная со следующего цикла с вас будет списываться ₪{price} в месяц как за обычный тариф {plan}.",
+    "החל מהמחזור הבא, המנוי שלך במסלול {plan} יהיה בסך ₪{amount} לחודש. הוראת הקבע הקודמת הסתיימה, ולכן כדי שהמנוי ימשיך בלי הפסקה, נשמח שתשלימו את התשלום בקישור עד {date}.":
+      "Со следующего цикла ваша подписка на тарифе {plan} будет стоить ₪{amount} в месяц. Прежний регулярный платёж завершён, поэтому, чтобы подписка продолжилась без перерыва, пожалуйста, завершите оплату по ссылке до {date}.",
     "כפי שביקשת, המנוי שלך עובר למסלול {plan} (₪{amount}) החל מהמחזור הבא.":
       "Как вы и просили, со следующего цикла ваша подписка переходит на тариф {plan} (₪{amount}).",
     "המעבר למסלול החדש שלך | נדרשת השלמת תשלום": "Переход на новый тариф | Нужно завершить оплату",

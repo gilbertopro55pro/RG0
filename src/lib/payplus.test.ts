@@ -69,10 +69,19 @@ describe("PAYPLUS_BILLING", () => {
 });
 
 describe("computePlanSwitchEffectiveDate", () => {
-  it("switches a monthly plan one day before the paid month ends", () => {
+  it("switches a monthly plan two days before the paid month ends", () => {
     const end = new Date("2026-11-20T08:00:00Z");
     for (const p of ["basic_monthly", "monthly", "studio_pro_monthly"] as const) {
-      expect(computePlanSwitchEffectiveDate(p, end).toISOString(), p).toBe("2026-11-19T08:00:00.000Z");
+      expect(computePlanSwitchEffectiveDate(p, end).toISOString(), p).toBe("2026-11-18T08:00:00.000Z");
+    }
+  });
+
+  it("is due by the daily 07:00 UTC cron of the day before the renewal, whatever the time of day", () => {
+    // The cron cancels the old standing order; PayPlus renews early on the renewal date.
+    for (const time of ["00:30", "06:59", "07:00", "07:18", "12:00", "21:00", "23:59"]) {
+      const end = new Date(`2026-12-03T${time}:00Z`);
+      const cronDayBefore = new Date("2026-12-02T07:00:00Z");
+      expect(computePlanSwitchEffectiveDate("monthly", end).getTime(), time).toBeLessThanOrEqual(cronDayBefore.getTime());
     }
   });
 

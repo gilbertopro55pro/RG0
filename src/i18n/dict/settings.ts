@@ -3,6 +3,7 @@ import type { AreaDict } from "@/i18n/types";
 // Area "settings" (see src/i18n/dict/index.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "מהחידוש הבא ({date}) המנוי יהיה בסך ₪{price}/חודש. יומיים לפני כן יישלח אליך במייל קישור להשלמת התשלום.": "From the next renewal ({date}) the subscription will be ₪{price}/month. Two days before, you'll get an email with a link to complete the payment.",
     "פרופיל": "Profile",
     "תמחור וחבילות צילום": "Pricing & packages",
     "התראות ואוטומציה": "Notifications & automation",
@@ -314,6 +315,7 @@ const dict: AreaDict = {
     "כשהלקוח מאשר את עיצוב האלבום בגלריה, קבצי ה-JPG במידות האלבום נשלחים לבית הדפוס שמוגדר כברירת מחדל בכלי האלבום. בלי כתובת שמורה של בית דפוס, תקבלו הודעה ותשלחו בעצמכם.": "When the client approves the album design in the gallery, the JPG files at the album's size go to the default print house of the album designer. Without a saved print house address, you're told and send it yourself.",
   },
   ru: {
+    "מהחידוש הבא ({date}) המנוי יהיה בסך ₪{price}/חודש. יומיים לפני כן יישלח אליך במייל קישור להשלמת התשלום.": "Со следующего продления ({date}) подписка будет стоить ₪{price}/мес. За два дня до этого вы получите письмо со ссылкой для завершения оплаты.",
     "פרופיל": "Профиль",
     "תמחור וחבילות צילום": "Цены и пакеты",
     "התראות ואוטומציה": "Уведомления и автоматизация",
