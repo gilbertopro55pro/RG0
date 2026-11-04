@@ -84,7 +84,13 @@ export async function createPayplusCheckoutLink(params: {
         phone: params.customerPhone,
       },
       recurring_settings: {
-        instant_first_payment: true,
+        // false (was true until 2026-11-04). With start_date_on_payment_date the payment page's own
+        // charge IS the recurring's first payment; instant_first_payment adds one more, which PayPlus's
+        // screen labels "חיוב נוסף מעבר לתשלומי הוראת הקבע – החיוב יחוייב מחר". Every subscription
+        // so far got exactly that: the page charge, then one more from the same recurring the next
+        // night (rudyaz 3.11 09:18 → 4.11 04:19; 6stUu, TBoog, 1PnrE, jsUQn before). The webhook also
+        // refunds such a charge on its own (duplicateSubscriptionCharge), in case anything else repeats it.
+        instant_first_payment: false,
         recurring_type: 2, // monthly cadence; recurring_range controls the interval length
         recurring_range: recurringRangeMonths,
         number_of_charges: 0, // unlimited, until canceled
@@ -172,6 +178,22 @@ export function computePlanSwitchEffectiveDate(currentPlan: SubscriptionPlan, cu
 }
 
 // Cancels a photographer's recurring subscription so no future charges occur.
+// Refunds a whole transaction (the webhook's duplicate-charge guard). Same answer shape as the
+// other calls (`results.status`). Not verified against PayPlus from the cloud environment (its keys
+// are sensitive): a failure throws, and the caller emails the admin to refund by hand.
+export async function refundPayplusTransaction(transactionUid: string, amount: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/Transactions/RefundByTransactionUID`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ transaction_uid: transactionUid, amount }),
+  });
+  const data = await res.json().catch(() => null);
+  const outcome = data?.results ?? data?.result;
+  if (!res.ok || outcome?.status !== "success") {
+    throw new Error(outcome?.description ?? `הזיכוי נכשל (HTTP ${res.status})`);
+  }
+}
+
 // PayPlus answers with `results` (as generateLink reads it); this used to read only `result`, so a
 // cancel that PayPlus carried out was still reported as failed (no cancel had gone through the app
 // by 2026-10-13, so it never showed). Either spelling counts now.
