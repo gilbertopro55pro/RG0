@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { verifyPayplusWebhookSignature, deletePayplusRecurring, refundPayplusTransaction, PAYPLUS_BILLING } from "@/lib/payplus";
-import { duplicateSubscriptionCharge, renewalWindowDays } from "@/lib/duplicateCharge";
+import { duplicateCheckout, duplicateRenewal, renewalWindowDays } from "@/lib/duplicateCharge";
 import { issueReceipt, documentTypeForTaxStatus } from "@/lib/finbot";
 import { issueSubscriptionReceipt, receiptFailureStatus } from "@/lib/subscriptionReceipt";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
@@ -181,17 +181,43 @@ export async function POST(request: NextRequest) {
   const paidCharges = (recentCharges ?? []).filter((c) => Number(c.amount) > 0);
   const previousLines = paidCharges.map((c) => `חיוב קודם: ${c.created_at}, עסקה ${c.transaction_uid ?? "?"}`).join("\n");
 
+  // This recurring's own earlier paid charges, for the renewal guard: its payment page anchors the
+  // billing slots, and the page's plan sets their length (the recurring's cadence is fixed at checkout).
+  let recurringDuplicate = false;
+  if (isRenewal && recurringUid) {
+    const { data: ownCharges } = await supabase
+      .from("payplus_webhook_events")
+      .select("created_at, type:payload->transaction->>type, amount:payload->transaction->>amount, plan:payload->transaction->>more_info_1")
+      .eq("photographer_id", photographerId)
+      .eq("outcome", "charged")
+      .eq("payload->transaction->recurring_charge_information->>recurring_uid", recurringUid)
+      .neq("id", eventId ?? "")
+      .order("created_at")
+      .returns<{ created_at: string; type: string | null; amount: string | null; plan: string | null }[]>();
+    const paid = (ownCharges ?? []).filter((c) => Number(c.amount) > 0);
+    const page = paid.find((c) => c.type === "payment_page") ?? paid[0];
+    if (page) {
+      const cadencePlan = page.plan && page.plan in SUBSCRIPTION_PLANS ? (page.plan as SubscriptionPlan) : photographerRow.plan;
+      recurringDuplicate = duplicateRenewal({
+        anchor: new Date(page.created_at),
+        cycleMonths: SUBSCRIPTION_PLANS[cadencePlan in SUBSCRIPTION_PLANS ? cadencePlan : effectivePlan].cycleMonths,
+        paidChargesAt: paid.map((c) => new Date(c.created_at)),
+      });
+    }
+  }
+
   // A second charge for a period already paid for (lib/duplicateCharge.ts) is refunded on the spot and
   // changes nothing else: no new period, no receipt, and a duplicate checkout's new recurring is
-  // deleted so it doesn't charge every month too. The recurring on file is left alone.
+  // deleted so it doesn't charge every month too. The recurring on file is left alone. A declined
+  // charge is never counted, so a retry after a failure is that period's first payment and goes through.
   if (
-    duplicateSubscriptionCharge({
-      type: transactionType,
-      previousChargesAt: paidCharges.map((c) => new Date(c.created_at)),
-      storedPlanCycleMonths: storedCycleMonths,
-      subscriptionStatus: photographerRow.subscription_status,
-      cancelAtPeriodEnd: photographerRow.cancel_at_period_end,
-    })
+    recurringDuplicate ||
+    (isCheckout &&
+      duplicateCheckout({
+        previousPaidChargesAt: paidCharges.map((c) => new Date(c.created_at)),
+        subscriptionStatus: photographerRow.subscription_status,
+        cancelAtPeriodEnd: photographerRow.cancel_at_period_end,
+      }))
   ) {
     let refundError: string | null = null;
     try {
