@@ -32,6 +32,7 @@ import { useLang, useT } from "@/i18n/client";
 import ConfettiBurst from "@/components/ConfettiBurst";
 import { selectionTargetState, shouldCelebrate } from "@/lib/selectionTarget";
 import { dirOf } from "@/i18n/config";
+import { labelsInUse, normalizePhotoLabel, PHOTO_LABEL_MAX } from "@/lib/photoLabels";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
 type UploadItem = { file: File; folderId: string | null };
@@ -534,23 +535,36 @@ export default function PublicGalleryView({
   // whole favorites set.
   const [labelEditPhoto, setLabelEditPhoto] = useState<PhotoWithUrl | null>(null);
   const [savingLabel, setSavingLabel] = useState(false);
-  const saveLabel = async (photo: PhotoWithUrl, label: string) => {
+  const [labelError, setLabelError] = useState(false);
+  const openLabel = (photo: PhotoWithUrl) => {
+    setLabelError(false);
+    setLabelEditPhoto(photo);
+  };
+  // `null` removes the label. A failed save keeps the window open with an error, instead of showing
+  // a label that was never stored.
+  const saveLabel = async (photo: PhotoWithUrl, label: string | null) => {
     setSavingLabel(true);
-    const trimmed = label.trim() || null;
-    await fetch(`/api/gallery/${token}/photo-label`, {
+    setLabelError(false);
+    const trimmed = normalizePhotoLabel(label);
+    const res = await fetch(`/api/gallery/${token}/photo-label`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ photoId: photo.id, label: trimmed }),
-    });
-    setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, custom_label: trimmed } : p)));
+    }).catch(() => null);
     setSavingLabel(false);
+    if (!res?.ok) {
+      setLabelError(true);
+      return;
+    }
+    setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, custom_label: trimmed } : p)));
     setLabelEditPhoto(null);
   };
-  // Every distinct label currently in use, for the favorites-panel filter chips below — sorted so
-  // the chip order doesn't jump around as photos get relabeled. Independent of favorite status: a
-  // client can attach a diamond-icon label ("קנבס" etc.) to a photo without also favoriting it, and
-  // that label still needs its own tab — it isn't only a sub-filter of the favorites set.
-  const usedLabels = Array.from(new Set(photos.filter((p) => p.custom_label).map((p) => p.custom_label as string))).sort();
+  // Every distinct label currently in use, for the favorites-panel filter chips below and the quick
+  // picks in the label window — sorted so the order doesn't jump around as photos get relabeled.
+  // Independent of favorite status: a client can attach a diamond-icon label ("קנבס" etc.) to a
+  // photo without also favoriting it, and that label still needs its own tab — it isn't only a
+  // sub-filter of the favorites set.
+  const usedLabels = labelsInUse(photos);
   const [activeLabelFilter, setActiveLabelFilter] = useState<string | null>(null);
 
   // "נקה הכל" — unfavorites every currently-favorited photo in one action, same local-state-only
@@ -1060,8 +1074,9 @@ export default function PublicGalleryView({
   // Arrow-key navigation while the lightbox is open — follows the page's reading direction, so the
   // visual "forward" direction (left in Hebrew, right in English/Russian) advances to the next
   // photo, matching how the prev/next arrow buttons are laid out on screen.
+  // Not while the label window is open over it: the arrows move the caret in the label's text field.
   useEffect(() => {
-    if (lightboxIndex === null) return;
+    if (lightboxIndex === null || labelEditPhoto) return;
     const forwardKey = isRtl ? "ArrowLeft" : "ArrowRight";
     const backKey = isRtl ? "ArrowRight" : "ArrowLeft";
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1070,7 +1085,7 @@ export default function PublicGalleryView({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lightboxIndex, visiblePhotos.length, isRtl]);
+  }, [lightboxIndex, visiblePhotos.length, isRtl, labelEditPhoto]);
 
   const slideshowPhotos = slideshowPhotoIds
     .map((id) => photoById.get(id))
@@ -1247,6 +1262,19 @@ export default function PublicGalleryView({
                 aria-pressed={photo.is_favorite}
               >
                 <HeartIcon filled={photo.is_favorite} size={21} color="#fff" />
+              </button>
+            )}
+            {/* The label diamond in the full-screen view too (owner, 2026-11-04), with the label
+                itself next to it where there's room. */}
+            {!readOnly && (
+              <button
+                onClick={() => openLabel(photo)}
+                className={lbBtn}
+                aria-label={photo.custom_label ? t("תגית: {label}", { label: photo.custom_label }) : t("הוספת תגית לתמונה")}
+                title={photo.custom_label ?? undefined}
+              >
+                <DiamondIcon filled={!!photo.custom_label} size={19} color="#fff" />
+                {photo.custom_label && <span className="hidden sm:inline max-w-[12rem] truncate text-sm">{photo.custom_label}</span>}
               </button>
             )}
             {allowDownloads && (
@@ -1458,7 +1486,7 @@ export default function PublicGalleryView({
               selectionMode={selectionMode}
               isSelected={isSelected}
               toggleFavorite={readOnly ? undefined : toggleFavorite}
-              onOpenLabel={readOnly ? undefined : setLabelEditPhoto}
+              onOpenLabel={readOnly ? undefined : openLabel}
               onDownload={allowDownloads ? downloadPhoto : undefined}
               premium
             />
@@ -1489,7 +1517,7 @@ export default function PublicGalleryView({
           return (
             <div
               key={photo.id}
-              className="relative aspect-square overflow-hidden"
+              className="group relative aspect-square overflow-hidden"
               style={{
                 background: "var(--gt-surface-soft)",
                 borderRadius: "var(--gt-photo-radius)",
@@ -1518,7 +1546,7 @@ export default function PublicGalleryView({
                   <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
                 )}
               </button>
-              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={readOnly ? undefined : toggleFavorite} onOpenLabel={readOnly ? undefined : setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
+              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={readOnly ? undefined : toggleFavorite} onOpenLabel={readOnly ? undefined : openLabel} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
             </div>
           );
         })}
@@ -1534,7 +1562,7 @@ export default function PublicGalleryView({
           return (
             <div
               key={photo.id}
-              className="relative overflow-hidden"
+              className="group relative overflow-hidden"
               style={{
                 height: cellSize,
                 width: ratio * cellSize,
@@ -1572,7 +1600,7 @@ export default function PublicGalleryView({
                   <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
                 )}
               </button>
-              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={readOnly ? undefined : toggleFavorite} onOpenLabel={readOnly ? undefined : setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
+              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={readOnly ? undefined : toggleFavorite} onOpenLabel={readOnly ? undefined : openLabel} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
             </div>
           );
         })}
@@ -1589,7 +1617,7 @@ export default function PublicGalleryView({
           return (
             <div
               key={photo.id}
-              className="relative block break-inside-avoid overflow-hidden"
+              className="group relative block break-inside-avoid overflow-hidden"
               style={{
                 marginBottom: "var(--gt-gap)",
                 background: "var(--gt-surface-soft)",
@@ -1625,7 +1653,7 @@ export default function PublicGalleryView({
                   <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent", borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined }} />
                 )}
               </button>
-              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={readOnly ? undefined : toggleFavorite} onOpenLabel={readOnly ? undefined : setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} inset={framed ? 8 : 0} premium={premium} />
+              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={readOnly ? undefined : toggleFavorite} onOpenLabel={readOnly ? undefined : openLabel} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} inset={framed ? 8 : 0} premium={premium} />
             </div>
           );
         })}
@@ -2186,12 +2214,22 @@ export default function PublicGalleryView({
                     >
                       <HeartIcon filled={photo.is_favorite} size={14} />
                     </button>
+                    {/* The label can be added or changed from here too (owner, 2026-11-04). */}
+                    <button
+                      onClick={() => openLabel(photo)}
+                      aria-label={photo.custom_label ? t("תגית: {label}", { label: photo.custom_label }) : t("הוספת תגית לתמונה")}
+                      title={photo.custom_label ?? t("הוספת תגית לתמונה")}
+                      className={`absolute top-1.5 end-1.5 h-7 w-7 rounded-full flex items-center justify-center bg-black/30 backdrop-blur-md ${BTN_PRESS}`}
+                    >
+                      <DiamondIcon filled={!!photo.custom_label} size={14} color="#fff" />
+                    </button>
                     {photo.custom_label && (
-                      <span
+                      <button
+                        onClick={() => openLabel(photo)}
                         className="absolute bottom-1.5 right-1.5 left-1.5 truncate rounded-full px-2 py-0.5 text-[10px] font-semibold text-center bg-black/40 text-white backdrop-blur-md"
                       >
                         {photo.custom_label}
-                      </span>
+                      </button>
                     )}
                   </div>
                 ))}
@@ -2245,7 +2283,9 @@ export default function PublicGalleryView({
       {labelEditPhoto && (
         <LabelEditModal
           photo={labelEditPhoto}
+          choices={usedLabels}
           saving={savingLabel}
+          error={labelError}
           onSave={(label) => saveLabel(labelEditPhoto, label)}
           onClose={() => setLabelEditPhoto(null)}
         />
@@ -2689,17 +2729,44 @@ export default function PublicGalleryView({
           >
             <IconClose className="h-4 w-4" />
           </button>
-          {allowDownloads && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                downloadPhoto(visiblePhotos[lightboxIndex]);
-              }}
-              className={`absolute top-4 start-4 h-9 px-3 rounded-full bg-white/10 text-white flex items-center justify-center text-xs font-semibold ${BTN_PRESS}`}
-            >
-              {t("הורדה")}
-            </button>
-          )}
+          {/* Heart and label diamond in the full-screen view (owner, 2026-11-04), beside download. */}
+          <div className="absolute top-4 start-4 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {!readOnly && (
+              <>
+                <button
+                  onClick={() => toggleFavorite(visiblePhotos[lightboxIndex])}
+                  className={`h-9 w-9 rounded-full bg-white/10 text-white flex items-center justify-center ${BTN_PRESS}`}
+                  aria-label={visiblePhotos[lightboxIndex].is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
+                  aria-pressed={visiblePhotos[lightboxIndex].is_favorite}
+                >
+                  <HeartIcon filled={visiblePhotos[lightboxIndex].is_favorite} size={18} />
+                </button>
+                <button
+                  onClick={() => openLabel(visiblePhotos[lightboxIndex])}
+                  className={`h-9 min-w-9 px-2.5 rounded-full bg-white/10 text-white flex items-center justify-center gap-1.5 text-xs font-semibold ${BTN_PRESS}`}
+                  aria-label={
+                    visiblePhotos[lightboxIndex].custom_label
+                      ? t("תגית: {label}", { label: visiblePhotos[lightboxIndex].custom_label as string })
+                      : t("הוספת תגית לתמונה")
+                  }
+                  title={visiblePhotos[lightboxIndex].custom_label ?? undefined}
+                >
+                  <DiamondIcon filled={!!visiblePhotos[lightboxIndex].custom_label} size={16} color="#fff" />
+                  {visiblePhotos[lightboxIndex].custom_label && (
+                    <span className="hidden sm:inline max-w-[12rem] truncate">{visiblePhotos[lightboxIndex].custom_label}</span>
+                  )}
+                </button>
+              </>
+            )}
+            {allowDownloads && (
+              <button
+                onClick={() => downloadPhoto(visiblePhotos[lightboxIndex])}
+                className={`h-9 px-3 rounded-full bg-white/10 text-white flex items-center justify-center text-xs font-semibold ${BTN_PRESS}`}
+              >
+                {t("הורדה")}
+              </button>
+            )}
+          </div>
           {lightboxIndex > 0 && (
             <button
               onClick={(e) => {
@@ -2910,10 +2977,12 @@ function PhotoTileOverlays({
   );
 }
 
-// Premium tiles: bare white glyphs in one corner instead of three frosted circles. On a device with
-// a mouse they appear on hover (or keyboard focus); a set heart or label always stays visible. On a
-// touch screen the heart and label are always there (no hover), and download stays in the lightbox,
-// the double-tap menu and the favorites panel, to keep every tile from carrying three icons.
+// Premium tiles: bare white glyphs in one corner instead of three frosted circles. The heart and the
+// diamond (label) are always there, on a computer as on a phone (owner, 2026-11-04: on a computer
+// the diamond only showed while the mouse was over the photo, and went away again with it). Download
+// appears on hover on a device with a mouse, and on a touch screen stays in the lightbox, the
+// double-tap menu and the favorites panel, to keep every tile from carrying three icons. Download
+// comes first in the row, so while it's hidden the diamond and the heart sit together in the corner.
 const PREMIUM_GLYPH_SHADOW = "drop-shadow(0 1px 3px rgba(0,0,0,0.45))";
 const HOVER_REVEAL = "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100";
 
@@ -2953,20 +3022,6 @@ function PremiumTileOverlays({
         </div>
       )}
       <div className="absolute flex items-center" style={{ bottom: offset, insetInlineEnd: offset }}>
-        {onOpenLabel && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenLabel(photo);
-            }}
-            className={`${glyphBtn} ${photo.custom_label ? "" : HOVER_REVEAL}`}
-            style={{ filter: PREMIUM_GLYPH_SHADOW }}
-            aria-label={photo.custom_label ? t("תגית: {label}", { label: photo.custom_label }) : t("הוספת תגית לתמונה")}
-            title={photo.custom_label ?? undefined}
-          >
-            <DiamondIcon filled={!!photo.custom_label} size={16} color="#fff" />
-          </button>
-        )}
         {onDownload && (
           <button
             onClick={(e) => {
@@ -2981,13 +3036,27 @@ function PremiumTileOverlays({
             <DownloadIcon size={18} stroke="#fff" />
           </button>
         )}
+        {onOpenLabel && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenLabel(photo);
+            }}
+            className={glyphBtn}
+            style={{ filter: PREMIUM_GLYPH_SHADOW }}
+            aria-label={photo.custom_label ? t("תגית: {label}", { label: photo.custom_label }) : t("הוספת תגית לתמונה")}
+            title={photo.custom_label ?? undefined}
+          >
+            <DiamondIcon filled={!!photo.custom_label} size={16} color="#fff" />
+          </button>
+        )}
         {toggleFavorite && (
           <button
             onClick={(e) => {
               e.stopPropagation();
               toggleFavorite(photo);
             }}
-            className={`${glyphBtn} ${photo.is_favorite ? "" : HOVER_REVEAL}`}
+            className={glyphBtn}
             style={{ filter: PREMIUM_GLYPH_SHADOW }}
             aria-label={photo.is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
             aria-pressed={photo.is_favorite}
@@ -3023,39 +3092,96 @@ function HeartIcon({ filled, size = 20, color = "var(--gt-heart, var(--color-cor
   );
 }
 
+// The label window (owner, 2026-11-04: using the diamond once must not be the end of it). The labels
+// already used in the gallery are quick picks: one tap puts the same label on this photo too. A
+// photo that has a label can have it changed or removed here.
 function LabelEditModal({
   photo,
+  choices,
   saving,
+  error,
   onSave,
   onClose,
 }: {
   photo: PhotoWithUrl;
+  choices: string[];
   saving: boolean;
-  onSave: (label: string) => void;
+  error: boolean;
+  onSave: (label: string | null) => void;
   onClose: () => void;
 }) {
   const [value, setValue] = useState(photo.custom_label ?? "");
   const t = useT();
+  const current = normalizePhotoLabel(photo.custom_label);
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.5)" }} onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("תגית לתמונה")}
         className="w-full max-w-xs rounded-2xl p-5 shadow-sheet"
         style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
       >
         <h2 className="text-sm font-bold mb-1">{t("תגית לתמונה")}</h2>
         <p className="text-xs mb-3" style={{ color: "var(--gt-ink-soft)" }}>
           {t("למשל: קנבס, בלוק זכוכית, כדי לספר לצלם/ת מה תרצו לעשות עם התמונה הזו.")}
         </p>
+        {choices.length > 0 && (
+          <div className="mb-3">
+            <p className="text-xs font-semibold mb-1.5" style={{ color: "var(--gt-ink-soft)" }}>
+              {t("תגיות שכבר בחרתם, בלחיצה:")}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {choices.map((label) => {
+                const active = label === current;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => (active ? onClose() : onSave(label))}
+                    disabled={saving}
+                    aria-pressed={active}
+                    className={`inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${BTN_PRESS}`}
+                    style={
+                      active
+                        ? { background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }
+                        : { background: "var(--gt-surface-soft)", color: "var(--gt-ink)" }
+                    }
+                  >
+                    <DiamondIcon filled={active} size={11} color="currentColor" />
+                    <span className="truncate">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <input
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          autoFocus
-          placeholder={t("קנבס")}
-          className="w-full rounded-lg border px-3 py-2.5 text-sm mb-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !saving) onSave(value);
+          }}
+          // With quick picks on screen, the phone's keyboard would cover them: focus only when typing
+          // is the only way to label.
+          autoFocus={choices.length === 0}
+          maxLength={PHOTO_LABEL_MAX}
+          enterKeyHint="done"
+          placeholder={choices.length > 0 ? t("או תגית חדשה") : t("קנבס")}
+          aria-label={t("תגית לתמונה")}
+          className="w-full rounded-lg border px-3 py-2.5 text-base sm:text-sm mb-4"
           style={{ borderColor: "var(--gt-border)", background: "var(--gt-surface)", color: "var(--gt-ink)" }}
         />
+        {error && (
+          <p role="alert" className="text-xs mb-3 text-rose">
+            {t("התגית לא נשמרה. נסו שוב")}
+          </p>
+        )}
         <div className="flex gap-2">
           <button
             onClick={() => onSave(value)}
@@ -3073,6 +3199,17 @@ function LabelEditModal({
             {t("ביטול")}
           </button>
         </div>
+        {current && (
+          <button
+            type="button"
+            onClick={() => onSave(null)}
+            disabled={saving}
+            className="mt-3 w-full text-center text-xs font-semibold underline underline-offset-2 disabled:opacity-60"
+            style={{ color: "var(--gt-ink-soft)" }}
+          >
+            {t("הסרת התגית מהתמונה")}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -3080,7 +3217,7 @@ function LabelEditModal({
 
 function DiamondIcon({ filled, size = 18, color = "var(--color-amber-deep)" }: { filled: boolean; size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M12 2.5 21 9.5 12 21.5 3 9.5 12 2.5Z"
         fill={filled ? color : "none"}

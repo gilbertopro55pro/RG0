@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { GalleryRow } from "@/lib/types";
+import { normalizePhotoLabel } from "@/lib/photoLabels";
 
 // Saves immediately on the client's own confirm (not batched with favorites) — a free-text label
 // on a single photo is a much smaller, self-contained edit than the whole favorites set, and
 // there's no natural "unsaved until you leave" moment for it the way there is for favorite-picking.
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const { photoId, label }: { photoId: string; label: string | null } = await request.json();
+  const body: { photoId?: unknown; label?: unknown } = await request.json().catch(() => ({}));
+  const photoId = typeof body.photoId === "string" ? body.photoId : null;
+  if (!photoId) return NextResponse.json({ error: "בקשה לא תקינה" }, { status: 400 });
 
   const supabase = createServiceRoleClient();
 
@@ -23,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
 
-  const trimmed = label?.trim() || null;
+  const trimmed = normalizePhotoLabel(body.label);
 
   // Scoped to this gallery's own id, not just the photo id — a client can only ever label a photo
   // that's actually inside the gallery their access token opens, same boundary the favorite route
