@@ -385,6 +385,9 @@ export type ReelSettings = {
   // ("shuffle" picks a new one).
   transitions: ReelTransition[];
   seed: number;
+  // The seed of the automatic times' rhythm (short, medium and long shots, rhythm.ts); "another
+  // rhythm" on the timeline picks a new one. Missing = 1.
+  rhythm?: number;
   // The on-beat effects ([] = none), or null for the template's own.
   fx: ReelBeatFx[] | null;
   text: ReelText;

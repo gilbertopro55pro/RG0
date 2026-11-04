@@ -85,8 +85,10 @@ export default function ReelTimelineEditor({
     const b0 = durs[k + 1] ?? 0;
     const edge0 = starts[k] + a0;
     const pairEnd = starts[k] + a0 + b0;
-    const lo = starts[k] + MIN_SEGMENT;
-    const hi = free ? starts[k] + 60 : pairEnd - MIN_SEGMENT;
+    // Half a second at least, or a single beat the automatic split already gave (a beat can be a
+    // little shorter).
+    const lo = starts[k] + Math.min(MIN_SEGMENT, a0);
+    const hi = free ? starts[k] + 60 : pairEnd - Math.min(MIN_SEGMENT, b0);
     const move = (ev: PointerEvent) => {
       const raw = edge0 + (ev.clientX - x0) / pps;
       const hit = snap ? snapTo(raw, k, pairEnd) : null;
