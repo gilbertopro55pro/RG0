@@ -1,4 +1,4 @@
-import { REEL_TRANSITIONS, transitionInfo, type ReelLineStyle, type ReelSettings, type ReelTemplate, type ReelTransition } from "./templates";
+import { REEL_TRANSITIONS, photosPerSegment, transitionInfo, type ReelLineStyle, type ReelSettings, type ReelTemplate, type ReelTransition } from "./templates";
 import { clamp01, drawGrain, drawSegment, easeOut, type ReelImage, type Scene } from "./scene";
 import { drawTransition } from "./transitions";
 import { applyFxPost, applyFxTransform, fxEvents, fxSpec } from "./beatFx";
@@ -52,11 +52,25 @@ export type ReelTimeline = {
 // reel starts on a beat, as a library track always does).
 export type ReelTempo = { bpm: number; phase: number };
 
+// What the times on the timeline were cut for: the template, the music and its tempo (owner,
+// 2026-11-04: a new song, a new link or another style re-cuts the reel on the new beat). Times the
+// photographer set are used only while this stays the same.
+export function cutBasis(templateId: string, musicSource: string, musicKey: string | null, bpm: number | null, phase = 0): string {
+  return `${templateId}|${musicSource}|${musicKey ?? ""}|${bpm ? `${bpm.toFixed(2)}:${phase.toFixed(3)}` : "-"}`;
+}
+
+// Why times kept for `kept` no longer apply now: the style changed, or the music did; null when
+// they still apply.
+export function recutReason(kept: string, now: string): "style" | "music" | null {
+  if (kept === now) return null;
+  return kept.split("|")[0] !== now.split("|")[0] ? "style" : "music";
+}
+
 // With no fixed length, a reel can grow up to this (Instagram's longest reel is 3 minutes).
 export const MAX_FREE_LENGTH = 180;
 
 export function segmentCount(photoCount: number, tpl: ReelTemplate) {
-  return Math.max(1, tpl.frame === "split" ? Math.ceil(photoCount / 2) : photoCount);
+  return Math.max(1, Math.ceil(photoCount / photosPerSegment(tpl)));
 }
 
 const tailFor = (settings: ReelSettings, total: number) => (settings.text.show && settings.text.ending.trim() ? Math.min(1.8, total * 0.18) : 0);
@@ -139,7 +153,7 @@ export function recommendedPhotos(length: number, tpl: ReelTemplate, settings: R
   const avail = length - tailFor(settings, length);
   const beat = tempo?.bpm ? 60 / tempo.bpm : null;
   const perPhoto = recommendedPerPhoto(beat, tpl.beat?.pattern ?? null);
-  return recommendedSegments(avail, perPhoto, segVideo) * (tpl.frame === "split" ? 2 : 1);
+  return recommendedSegments(avail, perPhoto, segVideo) * photosPerSegment(tpl);
 }
 
 // The shortest length on the list that takes `count` photos comfortably, or null.
@@ -210,7 +224,7 @@ export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: Re
   }
   const total = fixed ? (settings.length as number) : acc + tail;
   const pace = Math.max(0.5, Math.min(1.3, acc / segments / tpl.photoSeconds));
-  const dropped = tpl.frame === "split" ? Math.max(0, photoCount - segments * 2) : Math.max(0, photoCount - segments);
+  const dropped = Math.max(0, photoCount - segments * photosPerSegment(tpl));
   return { segments, durs, starts, transition: tpl.transitionSeconds * pace, pace, tail, total, fixed, dropped, unit, beat, phase, recommended };
 }
 
@@ -220,7 +234,7 @@ export function activeMedia(t: number, tl: ReelTimeline, tpl: ReelTemplate, sett
   if (!imageCount) return [];
   const pool = transitionPool(tpl, settings);
   const lenAfter = (k: number) => (k >= 0 && k < tl.segments - 1 ? transitionLength(transitionAfter(k, pool, settings.seed), tl, k) : 0);
-  const per = tpl.frame === "split" ? 2 : 1;
+  const per = photosPerSegment(tpl);
   const out: { index: number; local: number }[] = [];
   const k = segmentAt(tl, t);
   const add = (seg: number) => {

@@ -212,7 +212,66 @@ function drawScale(ctx: CanvasRenderingContext2D) {
   return Math.max(0.05, Math.hypot(m.a, m.b));
 }
 
-// One segment's picture (a photo, a framed photo, or two photos stacked) filling the canvas.
+// Picture in picture (owner, 2026-11-04: "a main photo and a small one, both moving"): the
+// segment's first photo on the whole screen, moving with the template's motion, and its second one
+// small, in a white frame with a shadow, drifting slowly toward the middle and turning a little,
+// with its own slow zoom inside. The small one takes another corner in every segment, never at the
+// very top or bottom edge (where the apps put their buttons and captions). With one photo in the
+// reel, the main photo alone.
+export function pipInsetRect(W: number, H: number, aspect: number, k: number, p: number) {
+  const short = Math.min(W, H);
+  const a = Math.max(0.68, Math.min(1.5, aspect));
+  let w = short * (a >= 1 ? 0.52 : 0.42);
+  let h = w / a;
+  if (h > H * 0.34) {
+    h = H * 0.34;
+    w = h * a;
+  }
+  const margin = short * 0.07;
+  // Bottom-end, top-start, bottom-start, top-end, in turn.
+  const corner = ((k % 4) + 4) % 4;
+  const right = corner === 0 || corner === 3;
+  const bottom = corner === 0 || corner === 2;
+  const e = easeInOut(clamp01(p));
+  const drift = short * 0.05;
+  const cx = (right ? W - margin - w / 2 : margin + w / 2) + (right ? -1 : 1) * drift * e;
+  const cy = (bottom ? H - margin * 1.8 - h / 2 : margin * 1.8 + h / 2) + (bottom ? -1 : 1) * drift * 0.6 * e;
+  const turn = ((right ? 1 : -1) * (-3 + 5 * e) * Math.PI) / 180;
+  return { cx, cy, w, h, turn, scale: 0.97 + 0.05 * e };
+}
+
+function drawPip(ctx: CanvasRenderingContext2D, sc: Scene, k: number, p: number) {
+  const { W, H, tpl, images } = sc;
+  const fit = sc.settings.fit;
+  const blur = sc.settings.blur ?? 60;
+  const main = images[(2 * k) % images.length];
+  drawPhoto(ctx, main, { x: 0, y: 0, w: W, h: H }, p, tpl.motion, 2 * k, fit, blur);
+  if (images.length === 1) return;
+  const small = images[(2 * k + 1) % images.length];
+  // The title opens the reel at the bottom by default: the first small photo goes up top then, so
+  // it never covers the title.
+  const fromTop = sc.settings.text.show && sc.settings.text.position === "bottom" ? 1 : 0;
+  const r = pipInsetRect(W, H, small.width / small.height, k + fromTop, p);
+  const short = Math.min(W, H);
+  const border = Math.round(short * 0.012);
+  ctx.save();
+  ctx.translate(r.cx, r.cy);
+  ctx.rotate(r.turn);
+  ctx.scale(r.scale, r.scale);
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.4)";
+  ctx.shadowBlur = short * 0.04;
+  ctx.shadowOffsetY = short * 0.012;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(-r.w / 2 - border, -r.h / 2 - border, r.w + 2 * border, r.h + 2 * border);
+  ctx.restore();
+  // Its own slow zoom, the other way from the main photo's.
+  drawPhoto(ctx, small, { x: -r.w / 2, y: -r.h / 2, w: r.w, h: r.h }, p, "kenburns", 2 * k + 1, "cover");
+  ctx.restore();
+}
+
+// One segment's picture (a photo, a framed photo, two photos stacked, or a photo in a photo)
+// filling the canvas.
 export function drawSegment(ctx: CanvasRenderingContext2D, sc: Scene, k: number, p: number) {
   const { W, H, tpl, images } = sc;
   const fit = sc.settings.fit;
@@ -220,6 +279,10 @@ export function drawSegment(ctx: CanvasRenderingContext2D, sc: Scene, k: number,
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, W, H);
   if (!images.length) return;
+  if (tpl.frame === "pip") {
+    drawPip(ctx, sc, k, p);
+    return;
+  }
   if (tpl.frame === "split") {
     const a = images[(2 * k) % images.length];
     const b = images[(2 * k + 1) % images.length];
