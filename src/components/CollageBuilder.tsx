@@ -29,7 +29,7 @@ import {
   collagePixels,
   jpegWithDpi,
 } from "@/lib/collage/output";
-import { drawCollageCell } from "@/lib/collage/draw";
+import { PREVIEW_MAX_SIDE, drawCollageCell, previewDecodeLong, previewDecodeSize, previewNeedsRedecode } from "@/lib/collage/draw";
 import { detectFaceBoxes, detectFacesInImageUrl } from "@/lib/faceRecognition";
 import CollagePhotoPicker from "@/components/CollagePhotoPicker";
 import { useBusy } from "@/lib/updateResume";
@@ -275,16 +275,26 @@ export default function CollageBuilder({
   // Only the collage's own photos stay in memory: every round of "תמונות אחרות" used to keep its
   // previews (each about 4MB once decoded) for as long as the window was open. Each cell shows its
   // photo's blurred placeholder until the preview arrives.
-  const imagesRef = useRef(new Map<string, HTMLImageElement>());
+  //
+  // And they're drawn from ImageBitmaps (2026-11-04, the collage still crashed a phone after a few
+  // rounds): a browser keeps a decoded copy of every <img> that was ever drawn on a canvas, even
+  // after the <img> is let go, so letting go of the previews freed nothing. Measured in Chromium
+  // with phone emulation, the page's memory grew by about 11MB per round, 285MB → 790MB in 30
+  // rounds. The preview <img> now only loads the photo: it's decoded once into a bitmap the size the
+  // canvas needs (lib/collage/draw.ts), the <img> is let go, and the bitmap is closed when the photo
+  // leaves the collage. A browser without createImageBitmap draws the <img>, as before.
+  const shownRef = useRef(new Map<string, Shown>());
   const blursRef = useRef(new Map<string, HTMLImageElement>());
+  const decodeLongRef = useRef(PREVIEW_MAX_SIDE);
   const [imagesVersion, setImagesVersion] = useState(0);
   useEffect(() => {
+    const target = previewDecodeLong(boxWidth, window.devicePixelRatio);
+    decodeLongRef.current = target;
     const ids = new Set((layout?.cells ?? []).map((c) => c.photoId));
-    for (const [id, img] of imagesRef.current) {
+    for (const [id, shown] of shownRef.current) {
       if (ids.has(id)) continue;
-      img.onload = null;
-      img.src = "";
-      imagesRef.current.delete(id);
+      releaseShown(shown);
+      shownRef.current.delete(id);
       blursRef.current.delete(id);
     }
     for (const id of ids) {
@@ -295,20 +305,58 @@ export default function CollageBuilder({
         blur.src = p.blur;
         blursRef.current.set(id, blur);
       }
-      if (imagesRef.current.has(id)) continue;
+      const current = shownRef.current.get(id);
+      if (current && (current.loading || current.failed || current.fallback)) continue;
+      if (current?.bitmap && !previewNeedsRedecode(current.decodedLong, current.naturalLong, target)) continue;
+      const shown: Shown = current ?? { bitmap: null, fallback: null, loading: null, failed: false, decodedLong: 0, naturalLong: 0 };
+      shownRef.current.set(id, shown);
       const img = new Image();
       img.decoding = "async";
-      img.onload = () => setImagesVersion((v) => v + 1);
+      shown.loading = img;
+      const stillWanted = () => shownRef.current.get(id) === shown && shown.loading === img && aliveRef.current;
+      img.onerror = () => {
+        if (!stillWanted()) return;
+        shown.loading = null;
+        // The cell keeps its placeholder (or the bitmap it had); no retry loop.
+        shown.failed = !shown.bitmap;
+      };
+      img.onload = async () => {
+        if (!stillWanted()) return;
+        const naturalLong = Math.max(img.naturalWidth, img.naturalHeight);
+        let bitmap: ImageBitmap | null = null;
+        if (typeof createImageBitmap === "function") {
+          const size = previewDecodeSize(img.naturalWidth, img.naturalHeight, decodeLongRef.current);
+          try {
+            bitmap = await createImageBitmap(img, size ? { resizeWidth: size.width, resizeHeight: size.height, resizeQuality: "high" } : undefined);
+          } catch {
+            bitmap = null;
+          }
+        }
+        if (!stillWanted()) {
+          bitmap?.close();
+          return;
+        }
+        shown.loading = null;
+        if (bitmap) {
+          shown.bitmap?.close();
+          shown.bitmap = bitmap;
+          shown.decodedLong = Math.max(bitmap.width, bitmap.height);
+          shown.naturalLong = naturalLong;
+          img.onload = null;
+          img.onerror = null;
+          img.src = "";
+        } else {
+          shown.fallback = img;
+        }
+        setImagesVersion((v) => v + 1);
+      };
       img.src = previewSrc(galleryId, p, id);
-      imagesRef.current.set(id, img);
     }
-  }, [layout, galleryId, byId]);
+  }, [layout, galleryId, byId, boxWidth]);
   useEffect(
     () => () => {
-      for (const img of imagesRef.current.values()) {
-        img.onload = null;
-        img.src = "";
-      }
+      for (const shown of shownRef.current.values()) releaseShown(shown);
+      shownRef.current.clear();
     },
     []
   );
@@ -318,18 +366,21 @@ export default function CollageBuilder({
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = Math.round(boxWidth * dpr);
     const h = Math.round(w / pageAspect);
-    canvas.width = w;
-    canvas.height = h;
+    // Only when the size changes: setting it allocates the canvas's memory again.
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, w, h);
     ctx.imageSmoothingQuality = "high";
     for (const cell of layout?.cells ?? []) {
-      const img = imagesRef.current.get(cell.photoId);
+      const shown = shownRef.current.get(cell.photoId);
       const blur = blursRef.current.get(cell.photoId);
-      if (img && img.complete && img.naturalWidth > 0) drawCollageCell(ctx, cell, w, h, img, img.naturalWidth, img.naturalHeight, facesRef.current.get(cell.photoId));
-      else if (blur && blur.complete && blur.naturalWidth > 0) drawCollageCell(ctx, cell, w, h, blur, blur.naturalWidth, blur.naturalHeight, facesRef.current.get(cell.photoId));
+      const faces = facesRef.current.get(cell.photoId);
+      if (shown?.bitmap) drawCollageCell(ctx, cell, w, h, shown.bitmap, shown.bitmap.width, shown.bitmap.height, faces);
+      else if (shown?.fallback && shown.fallback.naturalWidth > 0) drawCollageCell(ctx, cell, w, h, shown.fallback, shown.fallback.naturalWidth, shown.fallback.naturalHeight, faces);
+      else if (blur && blur.complete && blur.naturalWidth > 0) drawCollageCell(ctx, cell, w, h, blur, blur.naturalWidth, blur.naturalHeight, faces);
       else {
         ctx.fillStyle = background === "#ffffff" ? "#ece8e1" : "#2a2826";
         const x = Math.round(cell.x * w);
@@ -681,6 +732,23 @@ export default function CollageBuilder({
       </div>
     </div>
   );
+}
+
+// One photo of the preview: its bitmap, or the <img> itself where a bitmap can't be made, and the
+// <img> still loading (a first load, or a bigger one after the canvas grew).
+type Shown = { bitmap: ImageBitmap | null; fallback: HTMLImageElement | null; loading: HTMLImageElement | null; failed: boolean; decodedLong: number; naturalLong: number };
+
+function releaseShown(shown: Shown) {
+  shown.bitmap?.close();
+  shown.bitmap = null;
+  for (const img of [shown.loading, shown.fallback]) {
+    if (!img) continue;
+    img.onload = null;
+    img.onerror = null;
+    img.src = "";
+  }
+  shown.loading = null;
+  shown.fallback = null;
 }
 
 // A size of the photographer's own, kept across (the longer side is the width).
