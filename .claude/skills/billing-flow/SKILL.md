@@ -434,3 +434,24 @@ trial end**.
   webhook cancels the old recurring.
 - **First real case:** `146ad19b` (rudyaz), paid through 28.10.2026, no recurring: due email on 29.10,
   final warning 3.11, lock 4.11 (Israel dates), unless he pays.
+
+## Double charge on every new subscription: cause and guard (2026-11-04)
+
+- **What happened:** rudyaz paid ₪59 on the payment page (3.11 09:18 Israel), and the same recurring
+  (`nEUrv`) charged ₪59 again the next night (4.11 04:19). Same pattern as all four earlier subscriptions
+  (6stUu, TBoog, 1PnrE, jsUQn): exactly one charge beyond the page payment and the monthly schedule. The owner
+  refunds rudyaz's 4.11 charge in PayPlus.
+- **Cause:** `instant_first_payment: true` next to `start_date_on_payment_date: true`. The page charge is
+  already the recurring's first payment; PayPlus's screen labels the instant one "חיוב נוסף מעבר לתשלומי
+  הוראת הקבע – החיוב יחוייב מחר". Now `false` (`createPayplusCheckoutLink`). **Not verified against PayPlus**
+  (docs and API blocked from the sandbox): on the next new subscription, check in PayPlus that the page
+  charged once, and that the recurring's next charge is a month later.
+- **Guard** (`duplicateSubscriptionCharge` in `lib/duplicateCharge.ts`, run by the webhook before any update):
+  - a `recurring` charge within 20 days (monthly) / 300 days (annual, by the plan on the account) of a
+    previous charge with an amount;
+  - a second `payment_page` charge within 3 days on an active, non-cancelling account (two tabs).
+  - It refunds through `refundPayplusTransaction` (`Transactions/RefundByTransactionUID`, **not verified
+    live**), deletes a duplicate checkout's new recurring, and changes nothing else (no period, no receipt).
+    Outcomes: `duplicate_refunded` / `duplicate_refund_failed` (an email to refund by hand).
+  - Never refunds: a trial's first payment, past_due paying, a cancelled account coming back, a plan
+    switch, or a renewal paid at /billing (a full cycle after the last charge).

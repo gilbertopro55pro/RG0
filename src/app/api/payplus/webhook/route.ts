@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { verifyPayplusWebhookSignature, deletePayplusRecurring, PAYPLUS_BILLING } from "@/lib/payplus";
+import { verifyPayplusWebhookSignature, deletePayplusRecurring, refundPayplusTransaction, PAYPLUS_BILLING } from "@/lib/payplus";
+import { duplicateSubscriptionCharge, renewalWindowDays } from "@/lib/duplicateCharge";
 import { issueReceipt, documentTypeForTaxStatus } from "@/lib/finbot";
 import { issueSubscriptionReceipt, receiptFailureStatus } from "@/lib/subscriptionReceipt";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
@@ -165,6 +166,64 @@ export async function POST(request: NextRequest) {
     photographerRow.plan ??
     "monthly";
 
+  // Charges this account already paid, for the duplicate guard below and the alert after the update.
+  const storedCycleMonths = SUBSCRIPTION_PLANS[photographerRow.plan in SUBSCRIPTION_PLANS ? photographerRow.plan : effectivePlan].cycleMonths;
+  const { data: recentCharges } = await supabase
+    .from("payplus_webhook_events")
+    .select("id, created_at, transaction_uid, amount:payload->transaction->>amount")
+    .eq("photographer_id", photographerId)
+    .eq("outcome", "charged")
+    .gte("created_at", new Date(Date.now() - renewalWindowDays(Math.max(storedCycleMonths, SUBSCRIPTION_PLANS[effectivePlan].cycleMonths)) * 86_400_000).toISOString())
+    .neq("id", eventId ?? "")
+    .returns<{ id: string; created_at: string; transaction_uid: string | null; amount: string | null }[]>();
+  // Only a charge that took money counts: a page callback without an amount isn't a payment, and the
+  // guard must never refund the one real charge because of it.
+  const paidCharges = (recentCharges ?? []).filter((c) => Number(c.amount) > 0);
+  const previousLines = paidCharges.map((c) => `חיוב קודם: ${c.created_at}, עסקה ${c.transaction_uid ?? "?"}`).join("\n");
+
+  // A second charge for a period already paid for (lib/duplicateCharge.ts) is refunded on the spot and
+  // changes nothing else: no new period, no receipt, and a duplicate checkout's new recurring is
+  // deleted so it doesn't charge every month too. The recurring on file is left alone.
+  if (
+    duplicateSubscriptionCharge({
+      type: transactionType,
+      previousChargesAt: paidCharges.map((c) => new Date(c.created_at)),
+      storedPlanCycleMonths: storedCycleMonths,
+      subscriptionStatus: photographerRow.subscription_status,
+      cancelAtPeriodEnd: photographerRow.cancel_at_period_end,
+    })
+  ) {
+    let refundError: string | null = null;
+    try {
+      if (!transactionUid || !chargedAmount) throw new Error("חסרים מזהה העסקה או הסכום");
+      await refundPayplusTransaction(transactionUid, chargedAmount);
+    } catch (e) {
+      refundError = e instanceof Error ? e.message : "לא ידועה";
+      console.error(`Refunding duplicate charge ${transactionUid} for ${photographerId} failed:`, e);
+    }
+    let recurringNote = "";
+    if (isCheckout && recurringUid && recurringUid !== storedRecurringUid) {
+      try {
+        await deletePayplusRecurring(recurringUid);
+        recurringNote = `\nהוראת הקבע החדשה שנוצרה בתשלום הכפול (${recurringUid}) בוטלה.`;
+      } catch (e) {
+        recurringNote = `\nביטול הוראת הקבע החדשה ${recurringUid} נכשל: למחוק אותה ב-PayPlus › הוראות קבע.`;
+        console.error(`Deleting duplicate checkout's recurring ${recurringUid} failed:`, e);
+      }
+    }
+    await markEvent({ outcome: refundError ? "duplicate_refund_failed" : "duplicate_refunded" });
+    await alertAdmin(
+      refundError ? "חיוב כפול במנוי: הזיכוי האוטומטי נכשל" : `חיוב כפול במנוי זוכה אוטומטית: ${photographerRow.name}`,
+      `PayPlus חייב את ${who} ₪${chargedAmount ?? "?"} (${transactionType ?? "?"}, עסקה ${transactionUid ?? "?"}) על תקופה שכבר שולמה.\n` +
+        `${previousLines}\n` +
+        (refundError
+          ? `\nהזיכוי האוטומטי נכשל: ${refundError}\nמה לעשות: לזכות את העסקה ב-PayPlus.`
+          : `\nהחיוב זוכה אוטומטית, והחשבון לא השתנה. אין צורך לעשות דבר.`) +
+        recurringNote
+    );
+    return NextResponse.json({ received: true, duplicate_charge: true });
+  }
+
   // A NEW checkout creates a new recurring in PayPlus. If the account already had a different one (a
   // past_due account paying again, or a plan switch whose old recurring couldn't be cancelled), it
   // would keep charging in parallel, so it's cancelled here, before the row points at the new one:
@@ -219,24 +278,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "שגיאה זמנית" }, { status: 500 });
   }
 
-  // Two successful charges for one account inside a single billing cycle is never expected (found
-  // 2026-09-24: a checkout and a recurring charge 3 hours apart on the same account). The charge
-  // already happened and still gets its receipt — this makes sure a person looks at it and refunds.
-  const windowDays = SUBSCRIPTION_PLANS[effectivePlan].cycleMonths > 1 ? 300 : 20;
-  const { data: recentCharges } = await supabase
-    .from("payplus_webhook_events")
-    .select("id, created_at, transaction_uid")
-    .eq("photographer_id", photographerId)
-    .eq("outcome", "charged")
-    .gte("created_at", new Date(Date.now() - windowDays * 86_400_000).toISOString())
-    .neq("id", eventId ?? "")
-    .returns<{ id: string; created_at: string; transaction_uid: string | null }[]>();
-  if (recentCharges && recentCharges.length > 0) {
+  // Two successful charges inside one billing cycle that the guard above let through (a cancelled
+  // account subscribing again, a checkout a few days after a charge): a person looks at it.
+  const cycleCharges = paidCharges.filter(
+    (c) => Date.now() - new Date(c.created_at).getTime() < renewalWindowDays(SUBSCRIPTION_PLANS[effectivePlan].cycleMonths) * 86_400_000
+  );
+  if (cycleCharges.length > 0) {
     await alertAdmin(
       "חשד לחיוב כפול במנוי",
       `החשבון ${who} חויב שוב בתוך אותו מחזור חיוב.\n\n` +
         `החיוב החדש: ₪${chargedAmount ?? "?"}, עסקה ${transactionUid ?? "?"} (${transactionType ?? "?"})\n` +
-        recentCharges.map((c) => `חיוב קודם: ${c.created_at}, עסקה ${c.transaction_uid ?? "?"}`).join("\n") +
+        cycleCharges.map((c) => `חיוב קודם: ${c.created_at}, עסקה ${c.transaction_uid ?? "?"}`).join("\n") +
         `\n\nמה לעשות: לבדוק בממשק PayPlus ולזכות את החיוב המיותר.`
     );
   }
