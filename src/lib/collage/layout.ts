@@ -198,15 +198,56 @@ function heroCandidates(inner: Rect, photos: CollagePhoto[], gap: number, seed: 
   return out;
 }
 
+// The looks for one set of photos, page and gap, kept for the last few sets (2026-11-04). The looks
+// don't depend on the variant, and each "עיצוב אחר" used to build all of them again: thousands of
+// tries, about 60ms and 7MB of garbage for 8 photos on a computer, several times that on a phone.
+// Now it's only the next one in the list, and the same layout object for the same variant, so the
+// preview isn't drawn again when nothing changed.
+type PoolEntry = { pool: Candidate[]; W: number; layouts: Map<number, CollageLayout> };
+const POOL_CACHE_SIZE = 6;
+const poolCache = new Map<string, PoolEntry>();
+
 export function collageLayout(photos: CollagePhoto[], opts: CollageLayoutOptions): CollageLayout | null {
   const usable = photos.filter((p) => p.aspect > 0 && Number.isFinite(p.aspect));
   if (usable.length === 0 || !(opts.aspect > 0)) return null;
-  const W = opts.aspect;
-  const H = 1;
-  const gap = Math.max(0, opts.gap) * W;
-  const inner: Rect = { x: gap, y: gap, w: W - 2 * gap, h: H - 2 * gap };
   const variant = Math.max(0, Math.floor(opts.variant ?? 0));
   const style = opts.style ?? "auto";
+  const key = `${opts.aspect}|${Math.max(0, opts.gap)}|${style}|${usable.map((p) => `${p.id}:${p.aspect}`).join(",")}`;
+  let entry = poolCache.get(key);
+  if (entry) {
+    // The most recent last.
+    poolCache.delete(key);
+    poolCache.set(key, entry);
+  } else {
+    entry = { pool: layoutPool(usable, opts.aspect, opts.gap, style), W: opts.aspect, layouts: new Map() };
+    poolCache.set(key, entry);
+    while (poolCache.size > POOL_CACHE_SIZE) poolCache.delete(poolCache.keys().next().value!);
+  }
+  if (entry.pool.length === 0) return null;
+  const index = variant % entry.pool.length;
+  let layout = entry.layouts.get(index);
+  if (!layout) {
+    const chosen = entry.pool[index];
+    const W = entry.W;
+    // The page is W wide and 1 high: the cells as fractions of it. Frozen, since every caller with
+    // the same input gets this same object.
+    layout = Object.freeze({
+      style: chosen.style,
+      maxCrop: chosen.maxCrop,
+      signature: chosen.signature,
+      cells: Object.freeze(chosen.placed.map(({ photoId, rect }) => Object.freeze({ photoId, x: rect.x / W, y: rect.y, w: rect.w / W, h: rect.h }))) as CollageCell[],
+    });
+    entry.layouts.set(index, layout);
+  }
+  return layout;
+}
+
+// Every look for these photos, in the order "עיצוב אחר" goes through them.
+function layoutPool(usable: CollagePhoto[], aspect: number, gapFraction: number, style: CollageStyle | "auto"): Candidate[] {
+  const W = aspect;
+  const H = 1;
+  const gap = Math.max(0, gapFraction) * W;
+  const inner: Rect = { x: gap, y: gap, w: W - 2 * gap, h: H - 2 * gap };
 
   const candidates: Candidate[] = [];
   const orders = ordersOf(usable, usable.length > 12 ? 4 : 10, 1);
@@ -241,13 +282,7 @@ export function collageLayout(photos: CollagePhoto[], opts: CollageLayoutOptions
   const lists = [...families.values()];
   const pool: Candidate[] = [];
   for (let round = 0; pool.length < lists.reduce((s, l) => s + l.length, 0); round++) for (const l of lists) if (l[round]) pool.push(l[round]);
-  const chosen = pool[variant % pool.length];
-  return {
-    style: chosen.style,
-    maxCrop: chosen.maxCrop,
-    signature: chosen.signature,
-    cells: chosen.placed.map(({ photoId, rect }) => ({ photoId, x: rect.x / W, y: rect.y / H, w: rect.w / W, h: rect.h / H })),
-  };
+  return pool;
 }
 
 // The part of a photo a cell shows (fractions of the photo): the cell's shape cut from the photo, as

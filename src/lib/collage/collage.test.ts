@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { COLLAGE_MAX_CROP, collageCrop, collageLayout, type CollageLayout, type CollagePhoto } from "@/lib/collage/layout";
 import { collageSource, collageSubject, faceSample, mainPeopleGroups, pickCollagePhotos, pickPhase, sourceGroups, type PickablePhoto } from "@/lib/collage/pick";
 import { collageFileName, collagePixels, jpegWithDpi, MOBILE_MAX_PIXELS, DESKTOP_MAX_PIXELS } from "@/lib/collage/output";
+import { PREVIEW_MAX_SIDE, previewDecodeLong, previewDecodeSize, previewNeedsRedecode } from "@/lib/collage/draw";
 
 // The automatic collage (admin, 2026-10-23): the layout, which photos, and the file.
 
@@ -92,6 +93,64 @@ describe("collageLayout", () => {
 
   it("nothing to lay out: null", () => {
     expect(collageLayout([], { aspect: page, gap: 0.01 })).toBeNull();
+  });
+
+  // 2026-11-04 (the collage crashed a phone): the looks are built once per set of photos, and each
+  // "עיצוב אחר" only takes the next one.
+  it("another design of the same photos is the same object every time, frozen (nothing to draw again)", () => {
+    const set = photos([L, P, L, P, L, L, P, L]);
+    const a = collageLayout(set, { aspect: page, gap: 0.006, variant: 3 })!;
+    expect(collageLayout([...set], { aspect: page, gap: 0.006, variant: 3 })).toBe(a);
+    expect(Object.isFrozen(a)).toBe(true);
+    expect(Object.isFrozen(a.cells)).toBe(true);
+    expect(Object.isFrozen(a.cells[0])).toBe(true);
+  });
+
+  it("keeping the looks changes no layout: the same result after they were dropped and built again", () => {
+    const set = photos([L, P, L, L, P, L, L, P, L]);
+    const before = Array.from({ length: 6 }, (_, v) => collageLayout(set, { aspect: page, gap: 0.005, variant: v }));
+    // Enough other sets to push this one out.
+    for (let n = 2; n < 12; n++) collageLayout(photos(Array.from({ length: n }, () => L)), { aspect: page, gap: 0.005 });
+    const after = Array.from({ length: 6 }, (_, v) => collageLayout(set, { aspect: page, gap: 0.005, variant: v }));
+    expect(after[0]).not.toBe(before[0]);
+    expect(after).toEqual(before);
+  });
+
+  it("another gap, page, style or photo shape is another set of looks", () => {
+    const set = photos([L, P, L, P, L, L]);
+    const base = collageLayout(set, { aspect: page, gap: 0.006 })!;
+    expect(collageLayout(set, { aspect: page, gap: 0.01 })).not.toEqual(base);
+    expect(collageLayout(set, { aspect: 70 / 50, gap: 0.006 })).not.toEqual(base);
+    expect(collageLayout(set, { aspect: page, gap: 0.006, style: "columns" })!.style).toBe("columns");
+    const reshaped = set.map((p, i) => (i === 0 ? { ...p, aspect: P } : p));
+    const other = collageLayout(reshaped, { aspect: page, gap: 0.006 })!;
+    const first = (l: CollageLayout) => l.cells.find((c) => c.photoId === "p0")!;
+    expect((first(other).w * page) / first(other).h).not.toBeCloseTo((first(base).w * page) / first(base).h, 3);
+  });
+});
+
+describe("the preview's photos", () => {
+  it("decoded about as big as the preview canvas needs, never above the 1200px preview", () => {
+    // A phone: a 342px-wide preview at DPR 3 (capped at 2) → 855px.
+    expect(previewDecodeLong(342, 3)).toBe(855);
+    expect(previewDecodeLong(700, 2)).toBe(PREVIEW_MAX_SIDE);
+    expect(previewDecodeLong(0, 2)).toBe(PREVIEW_MAX_SIDE);
+    expect(previewDecodeLong(400, 0)).toBe(500);
+  });
+
+  it("the size to decode at keeps the photo's shape, and a smaller photo keeps its own size", () => {
+    expect(previewDecodeSize(1200, 800, 855)).toEqual({ width: 855, height: 570 });
+    expect(previewDecodeSize(800, 1200, 600)).toEqual({ width: 400, height: 600 });
+    expect(previewDecodeSize(640, 427, 855)).toBeNull();
+    expect(previewDecodeSize(0, 0, 855)).toBeNull();
+  });
+
+  it("decoded again only when clearly too small for the canvas now", () => {
+    expect(previewNeedsRedecode(855, 1200, 1200)).toBe(true);
+    expect(previewNeedsRedecode(1100, 1200, 1200)).toBe(false);
+    // The photo itself is that small: nothing more to get.
+    expect(previewNeedsRedecode(640, 640, 1200)).toBe(false);
+    expect(previewNeedsRedecode(0, 1200, 1200)).toBe(false);
   });
 });
 

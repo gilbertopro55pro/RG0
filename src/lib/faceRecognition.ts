@@ -52,16 +52,56 @@ export async function detectFaceBoxes(imageUrl: string): Promise<FaceBox[]> {
   const faceapi = await import("@vladmandic/face-api");
   const res = await fetch(imageUrl);
   if (!res.ok) throw new Error(`image ${res.status}`);
-  const objectUrl = URL.createObjectURL(await res.blob());
+  const image = await detectionImage(await res.blob());
   try {
-    const img = await loadImageElement(objectUrl);
-    const detections = await faceapi.detectAllFaces(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }));
-    const shorterSide = Math.min(img.naturalWidth, img.naturalHeight);
+    const detections = await faceapi.detectAllFaces(image.source, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }));
+    const shorterSide = Math.min(image.width, image.height);
     return detections
       .filter((d) => Math.min(d.box.width, d.box.height) / shorterSide >= 0.03)
-      .map((d) => ({ x: d.box.x / img.naturalWidth, y: d.box.y / img.naturalHeight, width: d.box.width / img.naturalWidth, height: d.box.height / img.naturalHeight }));
+      .map((d) => ({ x: d.box.x / image.width, y: d.box.y / image.height, width: d.box.width / image.width, height: d.box.height / image.height }));
   } finally {
+    image.release();
+  }
+}
+
+// The photo to run detection on, and how to let go of it (2026-11-04, the collage crashed a phone
+// after a few rounds of "תמונות אחרות"). face-api draws an <img> onto a canvas of its own, and the
+// browser then keeps a decoded copy of that <img> for as long as the page lives: about 4MB per
+// photo, measured in Chromium (230MB → 740MB after 120 photos, kept after the photos were let go).
+// A photo decoded to an ImageBitmap, drawn on a canvas made here and closed, leaves nothing behind
+// (flat at 230MB). The same pixels, so the same faces. Falls back to an <img> where
+// createImageBitmap can't read the file.
+async function detectionImage(blob: Blob): Promise<{ source: HTMLCanvasElement | HTMLImageElement; width: number; height: number; release: () => void }> {
+  if (typeof createImageBitmap === "function") {
+    let bitmap: ImageBitmap | null = null;
+    try {
+      bitmap = await createImageBitmap(blob, { imageOrientation: "from-image" });
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(bitmap, 0, 0);
+        const { width, height } = bitmap;
+        const release = () => {
+          canvas.width = 0;
+          canvas.height = 0;
+        };
+        return { source: canvas, width, height, release };
+      }
+    } catch {
+      // The <img> below.
+    } finally {
+      bitmap?.close();
+    }
+  }
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const img = await loadImageElement(objectUrl);
+    return { source: img, width: img.naturalWidth, height: img.naturalHeight, release: () => URL.revokeObjectURL(objectUrl) };
+  } catch (err) {
     URL.revokeObjectURL(objectUrl);
+    throw err;
   }
 }
 
@@ -86,17 +126,15 @@ export async function detectFacesInImageUrl(imageUrl: string): Promise<DetectedF
   const faceapi = await import("@vladmandic/face-api");
   const res = await fetch(imageUrl);
   if (!res.ok) return [];
-  const blob = await res.blob();
-  const objectUrl = URL.createObjectURL(blob);
+  const image = await detectionImage(await res.blob());
   try {
-    const img = await loadImageElement(objectUrl);
     // minConfidence above the library default (0.5) — event photos have plenty of blurry
     // background clutter (hands, fabric, out-of-focus heads) that a looser threshold detects as
     // low-confidence "faces," each contributing a garbage descriptor that then pollutes clustering
     // (a false detection can't match anyone real, so it either seeds a bogus singleton cluster or,
     // worse, sits close enough to a real cluster to drag a wrong photo into it).
     const detections = await faceapi
-      .detectAllFaces(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
+      .detectAllFaces(image.source, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
       .withFaceLandmarks()
       .withFaceDescriptors();
     // A face box under ~3% of the image's shorter side is almost always a distant background
@@ -106,20 +144,20 @@ export async function detectFacesInImageUrl(imageUrl: string): Promise<DetectedF
     const minBoxFraction = 0.03;
     return detections
       .filter((d) => {
-        const shorterSide = Math.min(img.naturalWidth, img.naturalHeight);
+        const shorterSide = Math.min(image.width, image.height);
         return Math.min(d.detection.box.width, d.detection.box.height) / shorterSide >= minBoxFraction;
       })
       .map((d) => ({
         box: {
-          x: d.detection.box.x / img.naturalWidth,
-          y: d.detection.box.y / img.naturalHeight,
-          width: d.detection.box.width / img.naturalWidth,
-          height: d.detection.box.height / img.naturalHeight,
+          x: d.detection.box.x / image.width,
+          y: d.detection.box.y / image.height,
+          width: d.detection.box.width / image.width,
+          height: d.detection.box.height / image.height,
         },
         descriptor: Array.from(d.descriptor),
       }));
   } finally {
-    URL.revokeObjectURL(objectUrl);
+    image.release();
   }
 }
 
