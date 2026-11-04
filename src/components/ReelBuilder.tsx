@@ -24,7 +24,7 @@ import {
   type ReelTransition,
   type ReelTransitionCategory,
 } from "@/lib/reels/templates";
-import { MIN_SEGMENT, activeMedia, drawReelFrame, drawTransitionPreview, loadReelImage, reelFonts, reelTimeline, transitionPool, type ReelFonts, type ReelImage, type ReelTempo } from "@/lib/reels/render";
+import { MIN_SEGMENT, activeMedia, drawReelFrame, drawTransitionPreview, lengthFor, loadReelImage, reelFonts, reelTimeline, transitionPool, type ReelFonts, type ReelImage, type ReelTempo } from "@/lib/reels/render";
 import { drawFxPreview } from "@/lib/reels/beatFx";
 import { detectTempoFromBuffer, type DetectedTempo } from "@/lib/reels/tempo";
 import { createClient } from "@/lib/supabase/client";
@@ -52,6 +52,27 @@ const PREVIEW_W = 360;
 const TEXT_COLORS = ["#ffffff", "#f4e7c8", "#c9a15a", "#b08d57", "#1c1b19", "#7a2e3a"];
 
 type Tab = "style" | "photos" | "transitions" | "music" | "text";
+type ReelResult = { url: string; blob: Blob; silent: { offset: number } | null; key: string };
+type ShareTarget = "tiktok" | "instagram" | "other";
+
+// Whether this browser can hand a video file to the phone's share sheet (TikTok and Instagram are
+// in it on a phone). A computer's browser usually can't: there the file is downloaded instead.
+function canShareVideoFiles(): boolean {
+  try {
+    return typeof navigator !== "undefined" && !!navigator.canShare && navigator.canShare({ files: [new File([new Blob(["x"])], "reel.mp4", { type: "video/mp4" })] });
+  } catch {
+    return false;
+  }
+}
+
+function downloadFile(url: string, name: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 
 // The photographer's own music file: at most this size (a few minutes of a normal song).
 const MAX_MUSIC_BYTES = 40 * 1024 * 1024;
@@ -185,6 +206,7 @@ export default function ReelBuilder({
     music: { source: "none", trackId: REEL_TRACKS[0].id, volume: 0.8, offset: 0 },
     transitions: [],
     seed: 1,
+    rhythm: 1,
     fx: null,
     text: {
       title: galleryTitle,
@@ -225,8 +247,14 @@ export default function ReelBuilder({
   const [fonts, setFonts] = useState<ReelFonts | null>(null);
   const [playing, setPlaying] = useState(true);
   const [exporting, setExporting] = useState<number | null>(null);
-  // `silent`: made for a song added in the app, with the second the song starts at there.
-  const [result, setResult] = useState<{ url: string; blob: Blob; silent: { offset: number } | null } | null>(null);
+  // `silent`: made for a song added in the app, with the second the song starts at there. `key`:
+  // what the file was made from, so a change after it makes a new file on the next tap.
+  const [result, setResult] = useState<ReelResult | null>(null);
+  // The two buttons (owner, 2026-11-04): download, or share to TikTok, Instagram or anywhere the
+  // phone offers. `pendingShare`: the file was made for a share, which needs a fresh tap.
+  const [shareMenu, setShareMenu] = useState(false);
+  const [pendingShare, setPendingShare] = useState<ShareTarget | null>(null);
+  const [shareHint, setShareHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef(false);
   const previewRef = useRef<HTMLCanvasElement | null>(null);
@@ -308,6 +336,17 @@ export default function ReelBuilder({
     setPreviewTime(time);
   };
   const pool = transitionPool(tpl, settings);
+  // Everything the file is made from: when any of it changes, the next tap makes a new file.
+  const exportKey = useMemo(
+    () => JSON.stringify([settings, readyIds, timeline.durs, timeline.total, [...clipOpts], musicKey]),
+    [settings, readyIds, timeline, clipOpts, musicKey]
+  );
+  const resultFresh = !!result && result.key === exportKey;
+  // More photos than the length and the music take comfortably (owner, 2026-11-04): say how many
+  // are recommended, with a tap to keep that many or to make the reel longer.
+  const recommended = timeline.recommended;
+  const tooMany = recommended != null && selected.length > recommended;
+  const longerLength = tooMany && settings.length != null ? lengthFor(selected.length, tpl, settings, tempo, segVideo) : null;
 
   useEffect(() => {
     reelFonts().then(setFonts);
@@ -719,9 +758,24 @@ export default function ReelBuilder({
       return next;
     });
 
-  const runExport = async () => {
-    if (!fonts || readyImages.length === 0) return;
+  // Keeps the first n items (the recommended count) and drops the rest.
+  const keepFirst = (n: number) => {
+    setSelected((prev) => prev.slice(0, n));
+    setDurState(null);
+    seek(0);
+  };
+  const setLength = (l: ReelLength) => {
+    setSettings((s) => ({ ...s, length: l }));
+    setDurState(null);
+    seek(0);
+  };
+
+  // Makes the file (or returns the one already made for exactly this reel).
+  const runExport = async (): Promise<ReelResult | null> => {
+    if (!fonts || readyImages.length === 0) return null;
+    if (result && result.key === exportKey) return result;
     setError(null);
+    if (result) URL.revokeObjectURL(result.url);
     setResult(null);
     cancelRef.current = false;
     setExporting(0);
@@ -817,35 +871,71 @@ export default function ReelBuilder({
         onProgress: (f) => setExporting(f),
         isCancelled: () => cancelRef.current,
       });
-      setResult({ url: URL.createObjectURL(blob), blob, silent: syncMode ? { offset: settings.music.offset } : null });
+      const made: ReelResult = { url: URL.createObjectURL(blob), blob, silent: syncMode ? { offset: settings.music.offset } : null, key: exportKey };
+      setResult(made);
+      return made;
     } catch (e) {
-      if (e instanceof ReelCancelledError) return;
+      if (e instanceof ReelCancelledError) return null;
       setError(e instanceof ReelUnsupportedError ? t("הדפדפן הזה לא תומך ביצירת וידאו. נסו בכרום או בספארי מעודכן.") : t("יצירת הרילס נכשלה, נסו שוב."));
+      return null;
     } finally {
       setExporting(null);
       setPlaying(true);
     }
   };
 
-  const fileName = () => {
-    const ext = result?.blob.type === "video/webm" ? "webm" : "mp4";
+  const fileName = (blob?: Blob) => {
+    const ext = (blob ?? result?.blob)?.type === "video/webm" ? "webm" : "mp4";
     return `reel-${settings.platform}.${ext}`;
   };
-  const canShareFile = () => {
-    if (!result || typeof navigator === "undefined" || !navigator.canShare) return false;
-    try {
-      return navigator.canShare({ files: [new File([result.blob], fileName(), { type: result.blob.type })] });
-    } catch {
-      return false;
-    }
+  // "הורדת הרילס": makes the file if needed, then saves it.
+  const downloadReel = async () => {
+    setShareMenu(false);
+    setPendingShare(null);
+    setShareHint(null);
+    const made = await runExport();
+    if (made) downloadFile(made.url, fileName(made.blob));
   };
-  const share = async () => {
-    if (!result) return;
-    try {
-      await navigator.share({ files: [new File([result.blob], fileName(), { type: result.blob.type })], title: galleryTitle });
-    } catch {
+  const shareHintFor = (target: ShareTarget, onPhone: boolean) =>
+    target === "tiktok"
+      ? onPhone
+        ? t("בחלון השיתוף בחרו טיקטוק. אם הוא לא מופיע, שמרו את הסרטון והעלו אותו מהאפליקציה של טיקטוק.")
+        : t("הסרטון ירד למחשב. כדי לפרסם אותו, העלו אותו בטיקטוק (באתר או באפליקציה).")
+      : target === "instagram"
+        ? onPhone
+          ? t("בחלון השיתוף בחרו אינסטגרם (רילס). אם הוא לא מופיע, שמרו את הסרטון והעלו אותו מהאפליקציה של אינסטגרם.")
+          : t("הסרטון ירד למחשב. כדי לפרסם אותו, העלו אותו באינסטגרם (באתר או באפליקציה).")
+        : onPhone
+          ? null
+          : t("הדפדפן הזה לא משתף קבצים, ולכן הסרטון ירד למחשב.");
+  // The phone's share sheet, with the file. It has to start right from a tap, so it's only called
+  // from a click with the file ready.
+  const shareFile = (made: ReelResult) => {
+    setPendingShare(null);
+    navigator.share({ files: [new File([made.blob], fileName(made.blob), { type: made.blob.type })], title: galleryTitle }).catch(() => {
       // Cancelled by the user.
+    });
+  };
+  // "שיתוף": TikTok, Instagram or anything else. The web can't post to TikTok or Instagram
+  // directly; on a phone the share sheet lists both. A computer gets the file downloaded, with a
+  // line on where to upload it.
+  const shareTo = async (target: ShareTarget) => {
+    setShareMenu(false);
+    const onPhone = canShareVideoFiles();
+    setShareHint(shareHintFor(target, onPhone));
+    if (!onPhone) {
+      setPendingShare(null);
+      const made = await runExport();
+      if (made) downloadFile(made.url, fileName(made.blob));
+      return;
     }
+    if (result && result.key === exportKey) {
+      shareFile(result);
+      return;
+    }
+    setPendingShare(target);
+    const made = await runExport();
+    if (!made) setPendingShare(null);
   };
 
   const chip = (active: boolean) =>
@@ -861,6 +951,28 @@ export default function ReelBuilder({
     { id: "music", label: t("מוזיקה") },
     { id: "text", label: t("טקסט") },
   ];
+  const lengthNow = settings.length;
+  const tooManyNotice =
+    tooMany && recommended != null && lengthNow != null ? (
+      <div className="rounded-md border border-amber-deep bg-amber-bg p-3">
+        <p className="text-xs font-semibold leading-relaxed">
+          {bpm
+            ? t("בחרתם {count} תמונות, ולרילס של {len} שניות בקצב של השיר מומלץ עד {n}. עם יותר מזה כל תמונה עוברת מהר מדי.", { count: selected.length, len: lengthNow, n: recommended })
+            : t("בחרתם {count} תמונות, ולרילס של {len} שניות מומלץ עד {n}. עם יותר מזה כל תמונה עוברת מהר מדי.", { count: selected.length, len: lengthNow, n: recommended })}
+        </p>
+        {timeline.dropped > 0 && <p className="text-[11px] text-rose mt-1">{t("כרגע {n} התמונות האחרונות לא נכנסות לרילס בכלל.", { n: timeline.dropped })}</p>}
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          <button onClick={() => keepFirst(recommended)} className="h-8 px-3 rounded-md bg-ink text-white text-xs font-semibold">
+            {t("השארת {n} התמונות הראשונות", { n: recommended })}
+          </button>
+          {longerLength != null && longerLength > lengthNow && (
+            <button onClick={() => setLength(longerLength)} className="h-8 px-3 rounded-md bg-white border border-line text-xs font-semibold">
+              {t("הארכת הרילס ל-{n} שניות", { n: longerLength })}
+            </button>
+          )}
+        </div>
+      </div>
+    ) : null;
 
   return (
     <div
@@ -980,6 +1092,15 @@ export default function ReelBuilder({
                   </button>
                 </div>
                 <p className={sectionHint}>{t("הסדר כאן הוא הסדר בסרטון. החצים מזיזים תמונה קדימה או אחורה.")}</p>
+                {tooManyNotice ? (
+                  <div className="mb-3">{tooManyNotice}</div>
+                ) : recommended != null && lengthNow != null ? (
+                  <p className="text-[11px] font-semibold text-ink -mt-1 mb-3">
+                    {bpm
+                      ? t("לרילס של {len} שניות, בקצב של השיר שבחרתם, מומלץ עד {n} תמונות.", { len: lengthNow, n: recommended })
+                      : t("לרילס של {len} שניות מומלץ עד {n} תמונות.", { len: lengthNow, n: recommended })}
+                  </p>
+                ) : null}
                 <label className={`mb-3 flex items-center justify-between gap-3 rounded-md border border-dashed p-3 cursor-pointer transition-colors ${addingVideo ? "opacity-60" : "border-line bg-white hover:border-amber-deep"}`}>
                   <span>
                     <span className="block text-sm font-semibold">{addingVideo ? t("טוען את הווידאו…") : t("הוספת וידאו מהמכשיר")}</span>
@@ -1345,28 +1466,58 @@ export default function ReelBuilder({
                 </button>
               </div>
             ) : (
-              <button
-                onClick={runExport}
-                disabled={!fonts || readyImages.length === 0}
-                className="w-full max-w-[300px] h-11 rounded-md bg-ink text-white text-sm font-semibold tracking-wide disabled:opacity-50"
-              >
-                {syncMode ? t("יצירת הסרטון (בלי מוזיקה)") : t("יצירת הסרטון")}
-              </button>
+              <div className="w-full max-w-[300px]">
+                <div className="flex gap-2">
+                  <button
+                    onClick={downloadReel}
+                    disabled={!fonts || readyImages.length === 0}
+                    className="flex-1 h-11 rounded-md bg-ink text-white text-sm font-semibold tracking-wide disabled:opacity-50"
+                  >
+                    {t("הורדת הרילס")}
+                  </button>
+                  <button
+                    onClick={() => setShareMenu((v) => !v)}
+                    disabled={!fonts || readyImages.length === 0}
+                    aria-expanded={shareMenu}
+                    className="flex-1 h-11 rounded-md bg-amber-deep text-white text-sm font-semibold tracking-wide disabled:opacity-50"
+                  >
+                    {t("שיתוף")} <span aria-hidden="true">▾</span>
+                  </button>
+                </div>
+                {shareMenu && (
+                  <div className="mt-1.5 rounded-md border border-line bg-white p-1 shadow-sheet" role="menu">
+                    {(
+                      [
+                        ["tiktok", t("טיקטוק")],
+                        ["instagram", t("אינסטגרם")],
+                        ["other", t("אחר (אפשרויות השיתוף של המכשיר)")],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button key={id} role="menuitem" onClick={() => shareTo(id)} className="w-full text-start rounded px-3 py-2 text-sm hover:bg-amber-bg">
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {syncMode && <p className="mt-1.5 text-[11px] text-ink-soft text-center">{t("הסרטון יוצא בלי מוזיקה: את השיר מוסיפים באפליקציה.")}</p>}
+              </div>
             )}
             {error && <p className="text-xs text-rose max-w-[300px] text-center">{error}</p>}
-            {result && (
+            {pendingShare && resultFresh && result && exporting === null && (
+              <div className="w-full max-w-[300px] rounded-md border border-amber-deep bg-amber-bg p-3 text-center">
+                <p className="text-sm font-semibold mb-2">{t("הסרטון מוכן")}</p>
+                <button onClick={() => shareFile(result)} className="w-full h-11 rounded-md bg-amber-deep text-white text-sm font-semibold">
+                  {t("שיתוף עכשיו")}
+                </button>
+              </div>
+            )}
+            {shareHint && <p className="text-[11px] text-ink-soft max-w-[300px] text-center">{shareHint}</p>}
+            {result && resultFresh && (
               <div className="w-full max-w-[300px] space-y-2">
                 <video src={result.url} controls playsInline className="w-full rounded-sm bg-black" style={{ maxHeight: "40vh" }} />
-                <div className="flex gap-2">
-                  <a href={result.url} download={fileName()} className="flex-1 h-10 rounded-md bg-white border border-line text-sm font-semibold flex items-center justify-center">
-                    {t("הורדה")}
-                  </a>
-                  {canShareFile() && (
-                    <button onClick={share} className="flex-1 h-10 rounded-md bg-amber-deep text-white text-sm font-semibold">
-                      {t("שיתוף לרשתות")}
-                    </button>
-                  )}
-                </div>
+                <a href={result.url} download={fileName(result.blob)} className="block text-center text-[11px] text-ink-soft underline">
+                  {t("הקובץ לא ירד? להורדה ידנית")}
+                </a>
                 {result.silent && <AppMusicSteps offset={result.silent.offset} songName={syncSong?.file.name ?? null} platform={settings.platform} />}
                 {result.blob.type === "video/webm" && (
                   <p className="text-[11px] text-ink-soft">{t("הדפדפן הזה יצר קובץ WebM. לאינסטגרם ולטיקטוק עדיף ליצור את הסרטון בכרום או בספארי בטלפון, שמייצרים MP4.")}</p>
@@ -1390,7 +1541,18 @@ export default function ReelBuilder({
                   {t("חלוקה אוטומטית")}
                 </button>
               ) : (
-                <span className="text-[11px] text-ink-soft">{bpm ? t("חלוקה אוטומטית לפי הקצב של השיר") : t("חלוקה אוטומטית שווה")}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-ink-soft">{bpm ? t("חלוקה אוטומטית לפי הקצב של השיר") : t("חלוקה אוטומטית: תמונות קצרות, בינוניות וארוכות")}</span>
+                  {!(tpl.beat && bpm) && (
+                    <button
+                      onClick={() => setSettings((s) => ({ ...s, rhythm: ((s.rhythm ?? 1) % 9973) + 1 + Math.floor(Math.random() * 500) }))}
+                      className="text-xs font-semibold text-amber-deep underline underline-offset-2"
+                      title={t("חלוקה אחרת של זמנים קצרים וארוכים בין התמונות")}
+                    >
+                      {t("קצב אחר")}
+                    </button>
+                  )}
+                </span>
               )}
               <label className="flex items-center gap-1.5">
                 <span className="text-xs font-semibold">{t("אורך הרילס")}</span>
@@ -1429,11 +1591,7 @@ export default function ReelBuilder({
               )}
             </div>
           </div>
-          {timeline.dropped > 0 && (
-            <p className="text-[11px] text-rose mb-2">
-              {t("{n} תמונות לא נכנסות באורך הזה (לכל תמונה צריך לפחות חצי שנייה). אפשר להאריך את הרילס או להוריד תמונות.", { n: timeline.dropped })}
-            </p>
-          )}
+          {tooManyNotice && tab !== "photos" && <div className="mb-2">{tooManyNotice}</div>}
           {readyImages.length > 0 ? (
             <ReelTimelineEditor
               clips={segKeys.slice(0, timeline.segments).map<TimelineClip>((key, k) => {
