@@ -100,6 +100,11 @@ const dict: AreaDict = {
     "למשל: קנבס, בלוק זכוכית, כדי לספר לצלם/ת מה תרצו לעשות עם התמונה הזו.":
       "For example: canvas, glass block, to tell your photographer what you'd like done with this photo.",
     "קנבס": "Canvas",
+    // The label window: quick picks, removing a label, a failed save (2026-11-04).
+    "תגיות שכבר בחרתם, בלחיצה:": "Labels you've already used, tap one:",
+    "או תגית חדשה": "Or a new label",
+    "התגית לא נשמרה. נסו שוב": "The label wasn't saved. Please try again",
+    "הסרת התגית מהתמונה": "Remove the label from this photo",
     // Album proofing
     "האלבום אושר": "Album approved",
     "העמוד הקודם": "Previous page",
@@ -273,6 +278,11 @@ const dict: AreaDict = {
     "למשל: קנבס, בלוק זכוכית, כדי לספר לצלם/ת מה תרצו לעשות עם התמונה הזו.":
       "Например: холст, стеклянный блок — чтобы рассказать фотографу, что вы хотите сделать с этим фото.",
     "קנבס": "Холст",
+    // The label window: quick picks, removing a label, a failed save (2026-11-04).
+    "תגיות שכבר בחרתם, בלחיצה:": "Метки, которые вы уже использовали, — нажмите:",
+    "או תגית חדשה": "Или новая метка",
+    "התגית לא נשמרה. נסו שוב": "Метка не сохранилась. Попробуйте ещё раз",
+    "הסרת התגית מהתמונה": "Убрать метку с фото",
     // Album proofing
     "האלבום אושר": "Альбом утверждён",
     "העמוד הקודם": "Предыдущая страница",
