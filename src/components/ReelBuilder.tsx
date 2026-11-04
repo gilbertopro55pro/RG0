@@ -7,6 +7,7 @@ import {
   REEL_LENGTHS,
   REEL_PLATFORMS,
   REEL_TEMPLATES,
+  photosPerSegment,
   REEL_TRANSITIONS,
   REEL_TRANSITION_CATEGORIES,
   defaultLineStyles,
@@ -24,7 +25,7 @@ import {
   type ReelTransition,
   type ReelTransitionCategory,
 } from "@/lib/reels/templates";
-import { MIN_SEGMENT, activeMedia, drawReelFrame, drawTransitionPreview, lengthFor, loadReelImage, reelFonts, reelTimeline, transitionPool, type ReelFonts, type ReelImage, type ReelTempo } from "@/lib/reels/render";
+import { MIN_SEGMENT, activeMedia, cutBasis, recutReason, drawReelFrame, drawTransitionPreview, lengthFor, loadReelImage, reelFonts, reelTimeline, transitionPool, type ReelFonts, type ReelImage, type ReelTempo } from "@/lib/reels/render";
 import { drawFxPreview } from "@/lib/reels/beatFx";
 import { detectTempoFromBuffer, type DetectedTempo } from "@/lib/reels/tempo";
 import { createClient } from "@/lib/supabase/client";
@@ -219,8 +220,8 @@ export default function ReelBuilder({
   }));
   const [images, setImages] = useState<Map<string, ReelImage>>(new Map());
   // Times the photographer set on the timeline (seconds per segment, keyed by its first photo);
-  // null = the automatic split.
-  const [durState, setDurState] = useState<{ keys: string[]; durs: number[] } | null>(null);
+  // null = the automatic split. `basis`: the template and the music they were set for (cutBasis).
+  const [durState, setDurState] = useState<{ keys: string[]; durs: number[]; basis: string } | null>(null);
   const [upload, setUpload] = useState<{ file: File; url: string } | null>(null);
   // The song the photographer will add in Instagram or TikTok (music source "sync").
   const [syncSong, setSyncSong] = useState<{ file: File; url: string } | null>(null);
@@ -304,21 +305,31 @@ export default function ReelBuilder({
     return null;
   }, [track, detected, settings.music.offset]);
   const bpm = tempo?.bpm ?? null;
+  // A new song (from the library, a file or a link), its tempo once it's found, a new start point
+  // in it, or another template re-cuts the reel (owner, 2026-11-04): times set for the old beat or
+  // style don't hold, so the automatic split takes over again, every cut on the new beat, with the
+  // rhythm of short, medium and long shots (rhythm.ts). Derived, not an effect: times kept for
+  // another basis are simply not used.
+  const phaseNow = tempo?.phase ?? 0;
+  const basis = useMemo(() => cutBasis(tpl.id, settings.music.source, musicKey, bpm, phaseNow), [tpl.id, settings.music.source, musicKey, bpm, phaseNow]);
+  const manual = !!durState && durState.basis === basis;
+  // What re-cut the reel, for one line under the timeline until it's dismissed.
+  const recutBy = durState ? recutReason(durState.basis, basis) : null;
   // Each segment is keyed by its (first) photo, so the times the photographer set travel with the
   // photo when it's moved, and fall back to the automatic split when photos are added or removed.
-  const perSeg = tpl.frame === "split" ? 2 : 1;
+  const perSeg = photosPerSegment(tpl);
   const segKeys = useMemo(() => {
     const keys: string[] = [];
     for (let i = 0; i < readyIds.length; i += perSeg) keys.push(readyIds[i]);
     return keys;
   }, [readyIds, perSeg]);
   const custom = useMemo(() => {
-    if (!durState) return null;
+    if (!durState || durState.basis !== basis) return null;
     const byKey = new Map(durState.keys.map((k, i) => [k, durState.durs[i]]));
     const used = segKeys.slice(0, durState.keys.length);
     if (used.length !== durState.keys.length || used.some((k) => !byKey.has(k))) return null;
     return used.map((k) => byKey.get(k)!);
-  }, [durState, segKeys]);
+  }, [durState, segKeys, basis]);
   // Each segment's video length (null for photos), so a clip gets its own time.
   const segVideo = useMemo(() => {
     const out: (number | null)[] = [];
@@ -552,7 +563,7 @@ export default function ReelBuilder({
     groups.splice(to, 0, g);
     setSelected(groups.flat());
     // The current times travel with their photos.
-    if (!durState) setDurState({ keys: segKeys.slice(0, timeline.segments), durs: timeline.durs.slice() });
+    if (!manual) setDurState({ keys: segKeys.slice(0, timeline.segments), durs: timeline.durs.slice(), basis });
   };
   const chooseUpload = (file: File | undefined) => {
     setMusicError(null);
@@ -1536,7 +1547,7 @@ export default function ReelBuilder({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {durState ? (
+              {manual ? (
                 <button onClick={() => setDurState(null)} className="text-xs font-semibold text-amber-deep underline underline-offset-2">
                   {t("חלוקה אוטומטית")}
                 </button>
@@ -1580,7 +1591,7 @@ export default function ReelBuilder({
                   onClick={() => {
                     // No fixed length: the times stay as they are now, and each photo's time can
                     // then grow or shrink on its own (the reel's length follows).
-                    setDurState({ keys: segKeys.slice(0, timeline.segments), durs: timeline.durs.slice() });
+                    setDurState({ keys: segKeys.slice(0, timeline.segments), durs: timeline.durs.slice(), basis });
                     setSettings((s) => ({ ...s, length: null }));
                   }}
                   className="h-9 px-3 rounded-md border border-line bg-white text-xs font-semibold text-ink-soft hover:border-amber-deep"
@@ -1592,6 +1603,20 @@ export default function ReelBuilder({
             </div>
           </div>
           {tooManyNotice && tab !== "photos" && <div className="mb-2">{tooManyNotice}</div>}
+          {recutBy && (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-card px-3 py-2 text-xs">
+              <span>
+                {recutBy === "style"
+                  ? t("הרילס נערך מחדש לפי הסגנון החדש. הזמנים שנקבעו קודם הוחלפו בחלוקה אוטומטית.")
+                  : bpm
+                    ? t("הרילס נערך מחדש לפי הקצב של השיר החדש: כל חיתוך על הביט. הזמנים שנקבעו קודם הוחלפו.")
+                    : t("הרילס נערך מחדש לפי המוזיקה החדשה. הזמנים שנקבעו קודם הוחלפו בחלוקה אוטומטית.")}
+              </span>
+              <button onClick={() => setDurState(null)} className="font-semibold text-amber-deep underline underline-offset-2">
+                {t("הבנתי")}
+              </button>
+            </div>
+          )}
           {readyImages.length > 0 ? (
             <ReelTimelineEditor
               clips={segKeys.slice(0, timeline.segments).map<TimelineClip>((key, k) => {
@@ -1606,7 +1631,7 @@ export default function ReelBuilder({
               beat={bpm ? 60 / bpm : null}
               phase={timeline.phase}
               onSeek={seek}
-              onDurs={(durs) => setDurState({ keys: segKeys.slice(0, timeline.segments), durs })}
+              onDurs={(durs) => setDurState({ keys: segKeys.slice(0, timeline.segments), durs, basis })}
               onReorder={reorderSegments}
               free={!timeline.fixed}
               snap={snap}

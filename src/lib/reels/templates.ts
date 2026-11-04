@@ -118,7 +118,9 @@ export const REEL_BEAT_FX: { id: ReelBeatFx; label: string }[] = [
 export type ReelFxSpec = { cut: ReelBeatFx[]; pulse?: ReelBeatFx[]; accent?: ReelBeatFx[]; accentEvery?: number };
 
 export type ReelMotion = "kenburns" | "punch" | "pan" | "drift";
-export type ReelFrame = "full" | "framed" | "split";
+// "pip" (owner, 2026-11-04): picture in picture, a main photo on the whole screen and a small one
+// over it, both moving (scene.ts, drawPip).
+export type ReelFrame = "full" | "framed" | "split" | "pip";
 export type ReelTextStyle = "serif" | "bold" | "cinema" | "magazine" | "modern";
 
 export type ReelTemplate = {
@@ -143,6 +145,11 @@ export type ReelTemplate = {
   beat?: { pattern: number[]; track: string };
   fx?: ReelFxSpec;
 };
+
+// How many photos one segment shows: two for the split screen and picture in picture, else one.
+export function photosPerSegment(tpl: Pick<ReelTemplate, "frame">): number {
+  return tpl.frame === "split" || tpl.frame === "pip" ? 2 : 1;
+}
 
 export const REEL_TEMPLATES: ReelTemplate[] = [
   {
@@ -213,6 +220,20 @@ export const REEL_TEMPLATES: ReelTemplate[] = [
     letterbox: false,
     grain: false,
     textStyle: "modern",
+    accent: "#ffffff",
+  },
+  {
+    id: "pip",
+    label: "תמונה בתוך תמונה",
+    description: "תמונה ראשית על כל המסך ותמונה קטנה במסגרת לבנה מעליה, ששתיהן זזות",
+    photoSeconds: 2.2,
+    transitionSeconds: 0.5,
+    transitions: ["fade", "slide", "zoom", "leak", "flip", "circle", "shake"],
+    motion: "kenburns",
+    frame: "pip",
+    letterbox: false,
+    grain: false,
+    textStyle: "serif",
     accent: "#ffffff",
   },
   // ---- On the beat (owner, 2026-10-15): every cut lands exactly on the music's beat, with an
@@ -329,6 +350,22 @@ export const REEL_TEMPLATES: ReelTemplate[] = [
     accent: "#e9d8b0",
     beat: { pattern: [4, 4, 2, 2, 4], track: "cinematic" },
     fx: { cut: ["zoomblur"], accent: ["flash"], accentEvery: 2 },
+  },
+  {
+    id: "beat-pip",
+    label: "תמונה בתוך תמונה על הביט",
+    description: "תמונה ראשית ותמונה קטנה מעליה, חיתוך חד על הביט וזום חבטה בכל פעימה",
+    photoSeconds: 1.4,
+    transitionSeconds: 0.22,
+    transitions: ["cut", "slide", "zoomin", "whip"],
+    motion: "punch",
+    frame: "pip",
+    letterbox: false,
+    grain: false,
+    textStyle: "bold",
+    accent: "#ffffff",
+    beat: { pattern: [2, 2, 4], track: "celebration" },
+    fx: { cut: ["punch", "flash"], pulse: ["punch"] },
   },
 ];
 
