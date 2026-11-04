@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { clientLangFor } from "@/lib/clientLang";
 import type { Lang } from "@/i18n/config";
+import { receiptVat } from "@/lib/receiptVat";
 
 // Short links to issued receipts (owner, 2026-10-08): myframeflow.com/r/<token> instead of the
 // invoicing provider's long URL. Tapping it goes straight to the receipt (app/r/[token]); WhatsApp
@@ -15,10 +16,11 @@ export function appOrigin(request: Request): string {
 }
 
 // One short link per receipt; null if it couldn't be saved (the message then carries the
-// provider's own link, so sending never fails over this).
+// provider's own link, so sending never fails over this). The row is also the receipt's record for
+// the dashboard's VAT (owner, 2026-11-04): the tax status it was issued under and the VAT in it.
 export async function createReceiptLink(
   request: Request,
-  link: { photographerId: string; eventId: string; documentUrl: string; amount: number; customerName: string },
+  link: { photographerId: string; eventId: string; documentUrl: string; amount: number; customerName: string; taxStatus: "exempt" | "licensed" },
 ): Promise<string | null> {
   const admin = createServiceRoleClient();
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -30,6 +32,8 @@ export async function createReceiptLink(
       document_url: link.documentUrl,
       amount: link.amount,
       customer_name: link.customerName || null,
+      tax_status: link.taxStatus,
+      vat_amount: receiptVat(link.amount, link.taxStatus),
     });
     if (!error) return `${appOrigin(request)}/r/${token}`;
   }
