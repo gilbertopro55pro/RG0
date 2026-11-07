@@ -8,7 +8,7 @@ import type { AlbumElement, AlbumFrame, AlbumOrnamentElement, AlbumPhotoElement,
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { TEXT_COLOR_PALETTE } from "@/lib/textColor";
 import { TEMPLATE_TABS, TEMPLATE_BANK, templateTabFor, type TemplateTabKey } from "@/lib/albumTemplateBank";
-import { ALBUM_MASKS, PACK_MASK_IDS, maskCssUrl, findMask } from "@/lib/albumMasks";
+import { ALBUM_MASKS, maskCssUrl, findMask } from "@/lib/albumMasks";
 import { ALBUM_ORNAMENTS, ORNAMENT_TABS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
 import { sharpenSvgFilter } from "@/lib/albumSharpen";
@@ -2196,7 +2196,6 @@ export default function AlbumSpreadCanvasEditor({
   sidePanelOffset,
   onSidePanelOffsetChange,
   draft,
-  isAdmin = false,
   bookSize,
   poolIsSelection = false,
   markedFrames = [],
@@ -2251,8 +2250,6 @@ export default function AlbumSpreadCanvasEditor({
   onSidePanelOffsetChange: (offset: { x: number; y: number }) => void;
   // Unsaved work on this page from before an update's reload (see AlbumCanvasDraft).
   draft?: AlbumCanvasDraft | null;
-  // The admin account ("עדכון אדמין"): the 43 masks of the pack (PACK_MASK_IDS) show only for it.
-  isAdmin?: boolean;
   // The album's own page size. `album` above is the size of the page being edited, which differs
   // from the album's on a cover made at its own size (e.g. 32×32 in a 60×30 album) — the admin's
   // page strip needs this to draw the OTHER pages at the album's size while that cover is open.
@@ -6868,7 +6865,7 @@ export default function AlbumSpreadCanvasEditor({
                 </div>
                 <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{t("הסרת מסכה")}</span>
               </button>
-              {ALBUM_MASKS.filter((mask) => isAdmin || !PACK_MASK_IDS.has(mask.id)).map((mask) => (
+              {ALBUM_MASKS.map((mask) => (
                 <div
                   key={mask.id}
                   draggable

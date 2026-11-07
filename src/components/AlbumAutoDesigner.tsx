@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 import { detectFaceBoxes, detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
+import { allowedAutoStyle, autoStylesFor } from "@/lib/albumAuto/styleAccess";
 import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type EventKind, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
 import { bleedIdsOf, bookPagesWithoutCover, fadeOwnHeroes, fillBookTemplate, frameElements, ownTemplatePlan, tidyOwnFrames } from "@/lib/albumAuto/templateFill";
 import type { AlbumBookTemplateRow, AlbumTemplateRow } from "@/lib/types";
@@ -163,6 +164,7 @@ export default function AlbumAutoDesigner({
   sizePresets,
   onCreate,
   onCancel,
+  allStyles = false,
 }: {
   galleryId: string;
   galleryTitle: string;
@@ -175,6 +177,8 @@ export default function AlbumAutoDesigner({
   sizePresets: { label: string; width: number; height: number; margin: number }[];
   onCreate: (result: AutoDesignResult) => Promise<void>;
   onCancel: () => void;
+  // The admin account: all four styles. Everyone else: "קו נקי" and "קטלוג" (styleAccess.ts).
+  allStyles?: boolean;
 }) {
   const t = useT();
   const supabase = createClient();
@@ -190,7 +194,8 @@ export default function AlbumAutoDesigner({
   // The dropdown's choice: "style:<id>" (an auto style) or "tpl:<id>" (a saved book template, whose
   // pages are filled with the photos — owner, 2026-09-30).
   const [choice, setChoice] = useSessionState<string>(session, "choice", "style:clean");
-  const style: AutoStyleId = choice.startsWith("style:") ? (choice.slice(6) as AutoStyleId) : "clean";
+  const style: AutoStyleId = choice.startsWith("style:") ? allowedAutoStyle(choice.slice(6), allStyles) : "clean";
+  const styleOptions = autoStylesFor(allStyles);
   // The photos' outline (owner, 2026-11-01): null = the style's own; width 0 = none.
   const [outline, setOutline] = useSessionState<AutoOutline>(session, "outline", null);
   const [bookTemplates, setBookTemplates] = useState<AlbumBookTemplateRow[]>([]);
@@ -907,12 +912,12 @@ export default function AlbumAutoDesigner({
               <label className="block min-w-0">
                 <span className="block text-xs text-ink-soft mb-1.5">{t("סגנון או תבנית שמורה")}</span>
                 <select
-                  value={choice}
+                  value={choice.startsWith("style:") ? `style:${style}` : choice}
                   onChange={(e) => setChoice(e.target.value)}
                   className="w-full rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
                 >
                   <optgroup label={t("סגנונות")}>
-                    {AUTO_STYLES.map((st) => (
+                    {styleOptions.map((st) => (
                       <option key={st.id} value={`style:${st.id}`}>
                         {t(st.name)}
                       </option>

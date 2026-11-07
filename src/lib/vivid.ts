@@ -1,11 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { isClientFacingPath } from "@/lib/premiumScope";
 
-// Whether the request's account sees the vivid look (lib/tones.ts): admin only for now (owner,
-// 2026-10-21, "עדכון אדמין"). Read from the session's JWT, verified locally (getClaims), so it
-// costs no round trip. Pages a client sees never get it. To open it to everyone: return true here
-// for any signed-in photographer.
+// Whether the request's account sees the vivid look (lib/tones.ts): every signed-in photographer
+// (owner, 2026-10-21 for the admin account, "עדכון אדמין"; for everyone from 2026-11-07). Read from
+// the session's JWT, verified locally (getClaims), so it costs no round trip. Pages a client sees
+// never get it, nor does a visitor who isn't signed in.
 export async function vividForRequest(path: string): Promise<boolean> {
   if (isClientFacingPath(path || "/")) return false;
   try {
@@ -18,5 +17,5 @@ export async function vividForRequest(path: string): Promise<boolean> {
 }
 
 export function vividForEmail(email: string | null | undefined): boolean {
-  return !!email && email.toLowerCase() === ADMIN_EMAIL;
+  return !!email;
 }
