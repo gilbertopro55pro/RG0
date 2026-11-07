@@ -30,24 +30,58 @@ export function musicGain(t: number, total: number, volume: number): number {
   return Math.max(0, g) * volume;
 }
 
-export async function renderSoundtrack(buffer: AudioBuffer, opts: { offset: number; total: number; volume: number }): Promise<AudioBuffer> {
+// `loop: false` (a screen recording, recording.ts): the song plays once and fades out where the
+// recording's song ends, if that's before the reel does, instead of starting again from the
+// recording's silent opening.
+export async function renderSoundtrack(buffer: AudioBuffer, opts: { offset: number; total: number; volume: number; loop?: boolean; end?: number }): Promise<AudioBuffer> {
   const { total, volume } = opts;
+  const loop = opts.loop !== false;
+  const offset = Math.max(0, opts.offset) % buffer.duration;
   const ctx = new OfflineAudioContext(2, Math.ceil(total * SAMPLE_RATE), SAMPLE_RATE);
   const src = ctx.createBufferSource();
   src.buffer = buffer;
-  src.loop = true;
+  src.loop = loop;
   src.loopStart = 0;
   src.loopEnd = buffer.duration;
   const gain = ctx.createGain();
-  const fadeIn = Math.min(0.25, total * 0.05);
-  const fadeOut = Math.min(1.5, total * 0.25);
+  // Where the sound stops: the reel's end, or (playing once) the song's end in the file.
+  const stop = loop ? total : Math.max(0.1, Math.min(total, (opts.end ?? buffer.duration) - offset));
+  const fadeIn = Math.min(0.25, stop * 0.05);
+  const fadeOut = Math.min(1.5, stop * 0.25);
   gain.gain.setValueAtTime(0, 0);
   gain.gain.linearRampToValueAtTime(volume, fadeIn);
-  gain.gain.setValueAtTime(volume, Math.max(fadeIn, total - fadeOut));
-  gain.gain.linearRampToValueAtTime(0, total);
+  gain.gain.setValueAtTime(volume, Math.max(fadeIn, stop - fadeOut));
+  gain.gain.linearRampToValueAtTime(0, stop);
   src.connect(gain).connect(ctx.destination);
-  src.start(0, Math.max(0, opts.offset) % buffer.duration);
+  src.start(0, offset);
   return ctx.startRendering();
+}
+
+// Only the sound of a video (a screen recording of a reel, recording.ts), as a small M4A that
+// decodeAudioData reads in every browser: the audio track is copied out of the file without the
+// video, reading only the parts of the file it needs (a 30-second recording can be 80MB). A file
+// Mediabunny can't read this way is decoded whole, as before.
+export class NoSoundError extends Error {}
+export async function recordingAudio(file: File): Promise<ArrayBuffer> {
+  if (file.type.startsWith("audio/")) return file.arrayBuffer();
+  const { Input, Output, Conversion, BlobSource, BufferTarget, Mp4OutputFormat, ALL_FORMATS } = await import("mediabunny");
+  let input: InstanceType<typeof Input> | null = null;
+  try {
+    input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+    if (!(await input.getPrimaryAudioTrack())) throw new NoSoundError("no audio track");
+    const target = new BufferTarget();
+    const output = new Output({ format: new Mp4OutputFormat(), target });
+    const conversion = await Conversion.init({ input, output, video: { discard: true }, showWarnings: false });
+    if (conversion.isValid) {
+      await conversion.execute();
+      if (target.buffer) return target.buffer;
+    }
+  } catch (e) {
+    if (e instanceof NoSoundError) throw e;
+  } finally {
+    input?.dispose();
+  }
+  return file.arrayBuffer();
 }
 
 // The preview's music. It plays the decoded track without interruption and is the preview's
@@ -87,15 +121,17 @@ export class PreviewMusic {
     return !!this.ctx && this.ctx.state === "running" && !!this.src;
   }
 
-  // Starts the track so that reel time `t` plays `offset + t` seconds into it.
-  play(buffer: AudioBuffer, t: number, offset: number) {
+  // Starts the track so that reel time `t` plays `offset + t` seconds into it. `loop: false` (a
+  // screen recording) plays it once: past its end the preview is silent, like the file.
+  play(buffer: AudioBuffer, t: number, offset: number, loop = true) {
     const ctx = this.ensure();
     this.stop();
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    src.loop = true;
+    src.loop = loop;
     src.connect(this.gain!);
-    src.start(0, (Math.max(0, offset + t)) % buffer.duration);
+    const at = Math.max(0, offset + t);
+    src.start(0, loop ? at % buffer.duration : Math.min(at, buffer.duration));
     this.src = src;
     this.startedAt = ctx.currentTime;
     this.startedT = t;
