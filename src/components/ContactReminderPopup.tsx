@@ -92,12 +92,12 @@ export default function ContactReminderPopup() {
 
   return (
     <>
-      <div className="fixed inset-0 z-[65] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }} role="dialog" aria-modal="true" aria-label={t("תזכורת ליצירת קשר")}>
+      <div className="fixed inset-0 z-[65] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }} role="dialog" aria-modal="true" aria-label={t("תזכורת למעקב")}>
         <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet">
           <div className="flex items-center gap-2 mb-3">
             <span className="h-2 w-2 rounded-full animate-pulse" style={{ background: "var(--color-amber-deep)" }} />
             <span className="text-[11px] font-semibold tracking-wide" style={{ color: "var(--color-amber-deep)" }}>
-              {t("תזכורת ליצירת קשר")}
+              {t("תזכורת למעקב")}
             </span>
           </div>
           <h2 className="text-lg font-bold font-display leading-snug">{lead.name}</h2>
@@ -143,7 +143,8 @@ export default function ContactReminderPopup() {
       {moving && (
         <ContactReminderDialog
           title={t("תזכורת אחרת")}
-          text={t("מתי להזכיר לך ליצור קשר עם {name}?", { name: lead.name })}
+          quick
+          text={t("מתי להזכיר לך לחזור ל{name}?", { name: lead.name })}
           onCancel={() => setMoving(false)}
           onConfirm={async (remindAt) => {
             const ok = await save(remindAt);

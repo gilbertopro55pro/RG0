@@ -86,11 +86,11 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     // only once the event itself was read under RLS above (anyone else gets notFound first).
     serviceRole
       .from("events")
-      .select("photographers(name, email, plan, whatsapp_signature, subscription_status, trial_ends_at)")
+      .select("photographers(name, email, plan, whatsapp_signature, business_tax_status, subscription_status, trial_ends_at)")
       .eq("id", id)
       .maybeSingle<{
         photographers:
-          | ({ name: string | null; email: string | null; whatsapp_signature: string | null } & Pick<Photographer, "plan" | "subscription_status" | "trial_ends_at">)
+          | ({ name: string | null; email: string | null; whatsapp_signature: string | null } & Pick<Photographer, "plan" | "subscription_status" | "trial_ends_at" | "business_tax_status">)
           | null;
       }>(),
     supabase.from("team_members").select("*").order("created_at", { ascending: true }).returns<TeamMember[]>(),
@@ -257,6 +257,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         customPackageName={customPackageName}
         messageTemplates={messageTemplateMap}
         whatsappSignature={whatsappSignature}
+        taxStatus={photographerSignatureRow?.business_tax_status ?? null}
         senderName={senderName}
         clientMessageLang={clientMessageLang}
         canChooseClientLang={isOwner && canChooseClientLang(user!.email)}

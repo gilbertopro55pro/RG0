@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useModalEntered } from "@/lib/useModalEntered";
-import ReminderDateTimeField from "@/components/ReminderDateTimeField";
+import SnoozePicker, { type SnoozeChoice } from "@/components/SnoozePicker";
 import { openWhatsApp } from "@/lib/waLink";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale, type Lang } from "@/i18n/config";
@@ -44,19 +44,9 @@ export type PendingLeadFollowUp = {
   reminder?: boolean;
 };
 
-// "תזכורת" on the quote follow-up, as on the new-lead popup (AssistantLeadPopup): the prompt comes
-// back then, with a phone notification, unless the lead is handled by hand before that. Besides
-// the two quick times, a date and time of the photographer's choice (owner, 2026-10-15).
-const REMIND_OPTIONS = [
-  { minutes: 30, label: "30 דקות" },
-  { minutes: 60, label: "שעה" },
-];
-
-// "2026-10-16T10:00" in the device's own time zone, for a datetime-local field.
-function localInputValue(d: Date) {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
+// "להזכיר לי מאוחר יותר" on every window (owner, 2026-11-07; the quote follow-up had it since
+// 2026-10-15): in an hour, in three hours, or at a date and time of the photographer's choice
+// (SnoozePicker). The window comes back then, with a phone notification (lib/reminderSnooze.ts).
 
 // Days after the album-design-ready / full-film-ready message (the album's are the photographer's,
 // 1–14), when the client still hasn't approved the album / picked the clip songs
@@ -104,6 +94,16 @@ type PendingItem =
   | PendingShootDayReminder
   | PendingSongStageReminder;
 
+// Puts a window off (lib/reminderSnooze.ts); the photographer's own reminders only (RLS).
+function snooze(id: string, when: SnoozeChoice) {
+  return fetch(`/api/scheduled-messages/${id}/snooze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(when),
+    keepalive: true,
+  }).catch(() => null);
+}
+
 function isClientReminder(item: PendingItem): item is PendingClientReminder {
   return item.type === "album_reminder" || item.type === "song_reminder";
 }
@@ -148,10 +148,10 @@ export default function PendingClientMessagePrompts({
   const [preview, setPreview] = useState<{ id: string; phone: string; message: string } | null>(null);
   const entered = useModalEntered();
   const current = queue[0] as PendingItem | undefined;
-  // The prompt whose reminder times are showing, and the date and time being picked (with its
-  // earliest value) when the photographer chose their own.
+  // The prompt whose reminder times are showing.
   const [pickingId, setPickingId] = useState<string | null>(null);
-  const [custom, setCustom] = useState<{ value: string; min: string; error: boolean } | null>(null);
+  // The shoot-day / song-stage window was put off: closing it isn't a cancel.
+  const windowSnoozed = useRef(false);
 
   const urlFor = (item: PendingItem) =>
     item.type === "shoot_day"
@@ -223,9 +223,14 @@ export default function PendingClientMessagePrompts({
           windowSent.current = true;
           void record({ send: true, channel });
         }}
+        onRemind={async (when) => {
+          windowSnoozed.current = true;
+          await snooze(current.id, when);
+        }}
         onClose={() => {
-          if (!windowSent.current) void record({ send: false });
+          if (!windowSent.current && !windowSnoozed.current) void record({ send: false });
           windowSent.current = false;
+          windowSnoozed.current = false;
           setQueue((prev) => prev.slice(1));
         }}
       />
@@ -255,36 +260,25 @@ export default function PendingClientMessagePrompts({
     setQueue((prev) => prev.slice(1));
   };
 
-  const remind = async (when: { remindMinutes: number } | { remindAt: string }) => {
+  const remind = async (when: SnoozeChoice) => {
     setBusy(true);
-    await fetch(urlFor(current), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(when),
-      keepalive: true,
-    }).catch(() => null);
+    await snooze(current.id, when);
     setBusy(false);
     setPickingId(null);
-    setCustom(null);
     setQueue((prev) => prev.slice(1));
   };
-  // Own date and time: tomorrow at 10:00 to start from, never in the past.
-  const openCustom = () => {
-    const now = new Date();
-    const start = new Date(now);
-    start.setDate(start.getDate() + 1);
-    start.setHours(10, 0, 0, 0);
-    setCustom({ value: localInputValue(start), min: localInputValue(now), error: false });
-  };
-  const remindAtCustom = () => {
-    if (!custom) return;
-    const at = new Date(custom.value);
-    if (Number.isNaN(at.getTime()) || at.getTime() < new Date().getTime() + 60_000) {
-      setCustom({ ...custom, error: true });
-      return;
-    }
-    remind({ remindAt: at.toISOString() });
-  };
+  // The quick buttons under each window's answers, or the reminder times once tapped.
+  const actions = (buttons: React.ReactNode, hint?: string) =>
+    pickingId === current.id ? (
+      <SnoozePicker busy={busy} hint={hint} onPick={remind} onBack={() => setPickingId(null)} />
+    ) : (
+      <>
+        {buttons}
+        <button onClick={() => setPickingId(current.id)} disabled={busy} className="w-full mt-2 h-10 rounded-lg text-sm font-semibold text-ink-soft disabled:opacity-60">
+          {t("להזכיר לי מאוחר יותר")}
+        </button>
+      </>
+    );
 
   return (
     <div
@@ -303,22 +297,24 @@ export default function PendingClientMessagePrompts({
             <p className="text-sm text-ink-soft mb-5">
               {withBoldName(t("היתרה של {name} (₪{amount}) שולמה?", { amount: current.balanceAmount.toLocaleString(dateLocale(lang), Number.isInteger(current.balanceAmount) ? undefined : { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }), current.clientName)}
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => respond(true)}
-                disabled={busy}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
-              >
-                {t("כן, שולם")}
-              </button>
-              <button
-                onClick={() => respond(false)}
-                disabled={busy}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-              >
-                {t("לא, שלח תזכורת")}
-              </button>
-            </div>
+            {actions(
+              <div className="flex gap-2">
+                <button
+                  onClick={() => respond(true)}
+                  disabled={busy}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
+                >
+                  {t("כן, שולם")}
+                </button>
+                <button
+                  onClick={() => respond(false)}
+                  disabled={busy}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                >
+                  {t("לא, שלח תזכורת")}
+                </button>
+              </div>
+            )}
           </>
         ) : current.type === "review" ? (
           <>
@@ -326,22 +322,24 @@ export default function PendingClientMessagePrompts({
             <p className="text-sm text-ink-soft mb-5">
               {withBoldName(t("לשלוח ל{name} בקשה להשאיר ביקורת?"), current.clientName)}
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => respond(false)}
-                disabled={busy}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-              >
-                {t("דלג הפעם")}
-              </button>
-              <button
-                onClick={() => respond(true)}
-                disabled={busy}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
-              >
-                {t("כן, שלח")}
-              </button>
-            </div>
+            {actions(
+              <div className="flex gap-2">
+                <button
+                  onClick={() => respond(false)}
+                  disabled={busy}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                >
+                  {t("דלג הפעם")}
+                </button>
+                <button
+                  onClick={() => respond(true)}
+                  disabled={busy}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
+                >
+                  {t("כן, שלח")}
+                </button>
+              </div>
+            )}
           </>
         ) : isClientReminder(current) ? (
           <>
@@ -358,78 +356,7 @@ export default function PendingClientMessagePrompts({
                   )
                 : withBoldName(t("עברו 3 ימים מאז ששלחת ל{name} שהסרט המלא מוכן, ועוד לא נבחרו שירים לקליפ. לשלוח תזכורת להוריד את הסרט ולבחור שיר שקט ושיר קצבי?"), current.clientName)}
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => respond(false)}
-                disabled={busy}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-              >
-                {t("דלג הפעם")}
-              </button>
-              <button
-                onClick={() => respond(true)}
-                disabled={busy}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
-              >
-                {t("שליחה בוואטסאפ")}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <h2 className="text-lg font-bold mb-2 font-display">{current.reminder ? t("תזכורת: מעקב אחרי הצעת מחיר") : t("מעקב אחרי הצעת מחיר")}</h2>
-            <p className="text-sm text-ink-soft mb-5">
-              {withBoldName(t("עברו יומיים מאז ששלחת ל{name} הצעת מחיר של ₪{amount}. לשלוח תזכורת מעקב בוואטסאפ?", { amount: current.quotedAmount }), current.leadName)}
-            </p>
-            {pickingId === current.id ? (
-              <div>
-                <p className="text-sm font-semibold mb-2">{t("מתי להזכיר לך?")}</p>
-                <div className="flex gap-2">
-                  {REMIND_OPTIONS.map((o) => (
-                    <button
-                      key={o.minutes}
-                      onClick={() => remind({ remindMinutes: o.minutes })}
-                      disabled={busy}
-                      className="flex-1 rounded-lg py-3 text-sm font-semibold border border-line bg-white text-ink disabled:opacity-60"
-                    >
-                      {t(o.label)}
-                    </button>
-                  ))}
-                  <button
-                    onClick={openCustom}
-                    disabled={busy}
-                    className={`flex-1 rounded-lg py-3 text-sm font-semibold border disabled:opacity-60 ${custom ? "border-amber-deep bg-amber-bg text-ink" : "border-line bg-white text-ink"}`}
-                  >
-                    {t("תאריך ושעה")}
-                  </button>
-                </div>
-                {custom && (
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <ReminderDateTimeField
-                      value={custom.value}
-                      min={custom.min}
-                      onChange={(v) => setCustom({ ...custom, value: v, error: false })}
-                      ariaLabel={t("תאריך ושעה")}
-                      className="sm:flex-1 min-w-0"
-                    />
-                    <button onClick={remindAtCustom} disabled={busy || !custom.value} className="rounded-lg h-11 px-4 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                      {t("קביעת התזכורת")}
-                    </button>
-                  </div>
-                )}
-                {custom?.error && <p className="text-xs text-rose mt-1.5">{t("בחרו תאריך ושעה שעוד לא עברו.")}</p>}
-                <p className="text-xs text-ink-soft mt-2">{t("אם תטפלו בהצעת המחיר לפני כן, התזכורת לא תופיע.")}</p>
-                <button
-                  onClick={() => {
-                    setPickingId(null);
-                    setCustom(null);
-                  }}
-                  className="mt-2 text-xs font-semibold underline text-ink-soft"
-                >
-                  {t("חזרה")}
-                </button>
-              </div>
-            ) : (
+            {actions(
               <div className="flex gap-2">
                 <button
                   onClick={() => respond(false)}
@@ -439,11 +366,29 @@ export default function PendingClientMessagePrompts({
                   {t("דלג הפעם")}
                 </button>
                 <button
-                  onClick={() => setPickingId(current.id)}
+                  onClick={() => respond(true)}
                   disabled={busy}
-                  className="rounded-lg py-3 px-4 text-sm font-semibold border border-line bg-white text-ink disabled:opacity-60"
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
                 >
-                  {t("תזכורת")}
+                  {t("שליחה בוואטסאפ")}
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <h2 className="text-lg font-bold mb-2 font-display">{current.reminder ? t("תזכורת: מעקב אחרי הצעת מחיר") : t("מעקב אחרי הצעת מחיר")}</h2>
+            <p className="text-sm text-ink-soft mb-5">
+              {withBoldName(t("עברו יומיים מאז ששלחת ל{name} הצעת מחיר של ₪{amount}. לשלוח תזכורת מעקב בוואטסאפ?", { amount: current.quotedAmount }), current.leadName)}
+            </p>
+            {actions(
+              <div className="flex gap-2">
+                <button
+                  onClick={() => respond(false)}
+                  disabled={busy}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                >
+                  {t("דלג הפעם")}
                 </button>
                 <button
                   onClick={() => respond(true)}
@@ -452,7 +397,8 @@ export default function PendingClientMessagePrompts({
                 >
                   {t("שליחה בוואטסאפ")}
                 </button>
-              </div>
+              </div>,
+              t("אם תטפלו בהצעת המחיר לפני כן, התזכורת לא תופיע.")
             )}
           </>
         )}

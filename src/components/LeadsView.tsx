@@ -434,7 +434,7 @@ export default function LeadsView({
                 <div className="text-[10.5px] text-ink-soft leading-tight">{createdLabel(lead.created_at, t, lang)}</div>
                 {lead.contact_remind_at && lead.status !== "won" && lead.status !== "lost" && (
                   <div className="text-[10.5px] leading-tight flex items-center gap-1" style={{ color: "var(--color-amber-deep)" }}>
-                    <span>{t("תזכורת ליצירת קשר: {when}", { when: reminderLabel(lead.contact_remind_at, lang) })}</span>
+                    <span>{t("תזכורת למעקב: {when}", { when: reminderLabel(lead.contact_remind_at, lang) })}</span>
                     <button onClick={() => setContactReminder(lead.id, null)} className="underline" aria-label={t("ביטול התזכורת")}>
                       {t("ביטול")}
                     </button>
@@ -831,8 +831,9 @@ export default function LeadsView({
 
       {contactAsk && (
         <ContactReminderDialog
-          title={t("לקבוע תזכורת ליצירת קשר?")}
-          text={t("תזכורת ליצור קשר עם {name}, בתאריך ובשעה שתבחרו. היא תקפוץ באפליקציה ותגיע גם כהתראה לטלפון.", { name: contactAsk.name })}
+          title={t("לקבוע תזכורת למעקב?")}
+          confirmLabel={t("קביעת התזכורת")}
+          text={t("בחרו מתי לחזור ל{name} ולבדוק אם החליטו (פולואפ). בזמן שתבחרו הליד יקפוץ באפליקציה, עם התקשרות ווואטסאפ בלחיצה, ותגיע גם התראה לטלפון.", { name: contactAsk.name })}
           onCancel={() => setContactAsk(null)}
           onConfirm={async (remindAt) => {
             const ok = await setContactReminder(contactAsk.id, remindAt);

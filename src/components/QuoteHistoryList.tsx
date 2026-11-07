@@ -1,5 +1,6 @@
 "use client";
 
+import { usePortfolioUrl } from "@/lib/usePortfolioUrl";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -36,6 +37,7 @@ function without<T>(map: Record<string, T>, key: string): Record<string, T> {
 // a tap, not after waiting on the server).
 export default function QuoteHistoryList({ signature }: { signature: string | null }) {
   const t = useT();
+  const portfolioUrl = usePortfolioUrl();
   const lang = useLang();
   const locale = dateLocale(lang);
   const [rows, setRows] = useState<QuoteHistoryRow[] | null>(null);
@@ -184,7 +186,7 @@ export default function QuoteHistoryList({ signature }: { signature: string | nu
                 !!d.withContract,
                 clientLang,
                 false,
-                { clientName: r.client_name }
+                { clientName: r.client_name, portfolioUrl }
               )
             : null;
           return (

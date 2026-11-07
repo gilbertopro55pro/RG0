@@ -5,8 +5,9 @@ import BodyPortal from "@/components/BodyPortal";
 import ReminderDateTimeField from "@/components/ReminderDateTimeField";
 import { useT } from "@/i18n/client";
 import { CONTACT_REMIND_MAX_DAYS } from "@/lib/leadContactReminder";
+import { SNOOZE_QUICK_MINUTES } from "@/lib/reminderSnooze";
 
-// "תזכורת ליצירת קשר" (owner, 2026-10-15): asked when a lead is marked "יצרתי קשר" (LeadsView), and
+// "תזכורת למעקב" (owner, 2026-10-15): asked when a lead is marked "יצרתי קשר" (LeadsView), and
 // used again to put a due reminder off (ContactReminderPopup). The photographer picks a date and a
 // time; the lead pops up in the app then, with a phone notification (api/cron/lead-reminders).
 
@@ -28,12 +29,16 @@ export default function ContactReminderDialog({
   title,
   text,
   confirmLabel,
+  quick = false,
   onConfirm,
   onCancel,
 }: {
   title: string;
   text: React.ReactNode;
   confirmLabel?: string;
+  // "בעוד שעה" / "בעוד 3 שעות" above the date and time (owner, 2026-11-07: a reminder that came up
+  // is put off with the quick options too, lib/reminderSnooze.ts).
+  quick?: boolean;
   // Gets the chosen moment as an ISO string; resolves false when saving failed.
   onConfirm: (remindAt: string) => Promise<boolean>;
   onCancel: () => void;
@@ -62,13 +67,30 @@ export default function ContactReminderDialog({
     if (!ok) setError(t("שמירת התזכורת נכשלה, נסו שוב."));
   };
 
+  const confirmIn = async (minutes: number) => {
+    setBusy(true);
+    setError(null);
+    const ok = await onConfirm(new Date(new Date().getTime() + minutes * 60_000).toISOString());
+    setBusy(false);
+    if (!ok) setError(t("שמירת התזכורת נכשלה, נסו שוב."));
+  };
+
   return (
     <BodyPortal>
       <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }} role="dialog" aria-modal="true" aria-label={title}>
         <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet">
           <h2 className="text-lg font-bold font-display mb-1.5">{title}</h2>
           <div className="text-sm text-ink-soft mb-4">{text}</div>
-          <label className="block text-xs font-semibold mb-1.5">{t("מתי להזכיר לך?")}</label>
+          {quick && (
+            <div className="flex gap-2 mb-3">
+              {SNOOZE_QUICK_MINUTES.map((m) => (
+                <button key={m} onClick={() => confirmIn(m)} disabled={busy} className="flex-1 h-11 rounded-xl border border-line bg-white text-sm font-semibold text-ink disabled:opacity-60">
+                  {m === 60 ? t("בעוד שעה") : t("בעוד 3 שעות")}
+                </button>
+              ))}
+            </div>
+          )}
+          <label className="block text-xs font-semibold mb-1.5">{quick ? t("או תאריך ושעה") : t("מתי להזכיר לך?")}</label>
           <ReminderDateTimeField
             value={value}
             min={min}

@@ -34,24 +34,25 @@ describe("eventQuoteTotal", () => {
 
 describe("quoteLinkMessage", () => {
   it("asks to approve a quote that's still open, and only to view one already approved", () => {
-    const open = quoteLinkMessage("אדוה הצעת מחיר", "https://myframeflow.com/s/qX", "גילברטו", true);
-    expect(open).toContain("בקישור אפשר לצפות בהצעת המחיר ולאשר אותה.");
+    const open = quoteLinkMessage("הצעת מחיר לחתונה", "https://myframeflow.com/s/qX", "גילברטו", true);
+    expect(open).toContain("יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר.");
     expect(open).toContain("וחותמים על החוזה");
-    const approved = quoteLinkMessage("אדוה הצעת מחיר", "https://myframeflow.com/s/qX", "גילברטו", true, "he", true, { clientName: "אדוה כהן" });
+    const approved = quoteLinkMessage("הצעת מחיר לחתונה", "https://myframeflow.com/s/qX", "גילברטו", true, "he", true, { clientName: "אדוה כהן" });
     expect(approved.split("\n")).toEqual([
-      "שלום אדוה,",
-      "אדוה הצעת מחיר",
-      "בקישור אפשר לצפות בהצעת המחיר.",
-      "קישור: https://myframeflow.com/s/qX",
+      "אדוה שלום,",
+      "מצורפת הצעת מחיר לחתונה",
+      "",
+      "קישור להצעת המחיר: https://myframeflow.com/s/qX",
+      "יש ללחוץ על הקישור לצפייה בהצעת המחיר.",
       "",
       "גילברטו",
     ]);
-    expect(approved).not.toContain("לאשר");
+    expect(approved).not.toContain("ואישור");
     expect(approved).not.toContain("החוזה");
   });
 
   it("speaks the client's language", () => {
     const msg = quoteLinkMessage("Quote", "https://x/s/q", null, false, "en", true, { clientName: "Dana" });
-    expect(msg.split("\n")).toEqual(["Hi Dana,", "Quote", "You can view the quote at the link.", "Link: https://x/s/q"]);
+    expect(msg.split("\n")).toEqual(["Hi Dana,", "Quote", "", "Quote link: https://x/s/q", "Tap the link to view the quote."]);
   });
 });

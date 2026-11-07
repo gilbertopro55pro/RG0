@@ -3,6 +3,11 @@ import type { AreaDict } from "@/i18n/types";
 // Area "home" (see src/i18n/dict/index.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "בעוד שעה": "In an hour",
+    "בעוד 3 שעות": "In 3 hours",
+    "אפשר לקבוע תזכורת עד 90 יום קדימה.": "A reminder can be set up to 90 days ahead.",
+    "החלון ייעלם עד אז, ויחזור עם התראה לטלפון.": "The window goes away until then, and comes back with a phone notification.",
+    "להזכיר לי מאוחר יותר": "Remind me later",
     "קבלה ללקוח/ה": "Client receipt",
     "למשל: צילום בר מצווה, צילום חתונה": "e.g. Bar mitzvah photography, wedding photography",
     "נא למלא על מה התשלום": "Please fill in what the payment is for",
@@ -624,6 +629,11 @@ const dict: AreaDict = {
     "העיצוב נשלח ב-{date}. לחצו לשליחת תזכורת בוואטסאפ": "The design was sent on {date}. Tap to send a reminder on WhatsApp",
   },
   ru: {
+    "בעוד שעה": "Через час",
+    "בעוד 3 שעות": "Через 3 часа",
+    "אפשר לקבוע תזכורת עד 90 יום קדימה.": "Напоминание можно поставить не дальше чем на 90 дней вперёд.",
+    "החלון ייעלם עד אז, ויחזור עם התראה לטלפון.": "Окно исчезнет до этого времени и вернётся с уведомлением на телефон.",
+    "להזכיר לי מאוחר יותר": "Напомнить позже",
     "קבלה ללקוח/ה": "Квитанция клиенту",
     "למשל: צילום בר מצווה, צילום חתונה": "например: съёмка бар-мицвы, свадебная съёмка",
     "נא למלא על מה התשלום": "Укажите, за что оплата",

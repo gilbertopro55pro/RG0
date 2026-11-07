@@ -7,6 +7,7 @@ import { FOLLOW_UP_LEAD_COLUMNS, quoteFollowUpHandled, type FollowUpLeadState } 
 import { dateLocale } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
+import { SNOOZABLE_KINDS } from "@/lib/reminderSnooze";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,6 +20,24 @@ export const maxDuration = 60;
 // remind_at / remind_pushed_at): one handled by hand since (lib/leadFollowUp.ts) is closed instead.
 // And a contact reminder set when marking a lead "יצרתי קשר" (owner, 2026-10-15;
 // lib/leadContactReminder.ts), for a lead still open.
+// And every other reminder window of the home screen put off with "תזכורת" (owner, 2026-11-07,
+// lib/reminderSnooze.ts): payment, review, album approval, clip songs, shoot day, song stage.
+
+// What each window is about, for the notification's text.
+const SNOOZED_TITLES: Record<string, string> = {
+  payment_reminder: "תזכורת: תשלום של {name}",
+  review_request: "תזכורת: בקשת ביקורת מ{name}",
+  album_approval_reminder: "תזכורת: אישור עיצוב האלבום של {name}",
+  song_selection_reminder: "תזכורת: בחירת שירים לקליפ של {name}",
+  song_stage_reminder: "תזכורת: בחירת שירים לקליפ של {name}",
+  shoot_day_reminder: "תזכורת: הודעה לפני יום הצילום של {name}",
+};
+
+type DueSnoozed = {
+  id: string;
+  kind: string;
+  events: { client_name: string; photographer_id: string; photographers: (AccessRow & { ui_lang: string | null }) | null } | null;
+};
 
 type DueFollowUp = {
   id: string;
@@ -145,11 +164,52 @@ export async function GET(request: NextRequest) {
     const t = makeT(messagesFor(lang));
     const date = lead.event_date_interest ? new Date(lead.event_date_interest).toLocaleDateString(dateLocale(lang)) : null;
     contactsSent += await sendPushToPhotographer(lead.photographer_id, {
-      title: t("תזכורת: ליצור קשר עם {name}", { name: lead.name }),
+      title: t("תזכורת: לחזור ל{name}", { name: lead.name }),
       body: [lead.event_type_name, date].filter(Boolean).join(" · ") || t("לחצו לפתיחת הלידים"),
       url: "/leads",
       tag: `contact-reminder-${lead.id}`,
     });
   }
-  return NextResponse.json({ due: data?.length ?? 0, sent, followUps: followUps?.length ?? 0, followUpsSent, contacts: contacts?.length ?? 0, contactsSent });
+
+  const { data: snoozed, error: snoozedError } = await supabase
+    .from("scheduled_messages")
+    .select("id, kind, events(client_name, photographer_id, photographers(email, subscription_status, trial_ends_at, ui_lang))")
+    .in("kind", SNOOZABLE_KINDS.filter((k) => k !== "lead_quote_followup"))
+    .eq("status", "awaiting_confirmation")
+    .lte("remind_at", now)
+    .is("remind_pushed_at", null)
+    .limit(100)
+    .returns<DueSnoozed[]>();
+  if (snoozedError) return NextResponse.json({ error: snoozedError.message }, { status: 500 });
+
+  let snoozedSent = 0;
+  for (const m of snoozed ?? []) {
+    const { data: claimed } = await supabase
+      .from("scheduled_messages")
+      .update({ remind_pushed_at: now })
+      .eq("id", m.id)
+      .eq("status", "awaiting_confirmation")
+      .is("remind_pushed_at", null)
+      .select("id");
+    const event = m.events;
+    if (!claimed?.length || !event || isLockedOut(event.photographers)) continue;
+    const lang = photographerLang(event.photographers?.ui_lang);
+    const t = makeT(messagesFor(lang));
+    snoozedSent += await sendPushToPhotographer(event.photographer_id, {
+      title: t(SNOOZED_TITLES[m.kind] ?? "תזכורת: {name}", { name: event.client_name }),
+      body: t("לחצו כדי לפתוח את ההודעה ללקוח."),
+      url: "/",
+      tag: `snoozed-${m.id}`,
+    });
+  }
+  return NextResponse.json({
+    due: data?.length ?? 0,
+    sent,
+    followUps: followUps?.length ?? 0,
+    followUpsSent,
+    contacts: contacts?.length ?? 0,
+    contactsSent,
+    snoozed: snoozed?.length ?? 0,
+    snoozedSent,
+  });
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePortfolioUrl } from "@/lib/usePortfolioUrl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deliveryNotes, quoteLinkMessage, quoteShareCaption, withoutStaleDeliveryLines } from "@/lib/quoteDefaults";
 import { buildWaMeLink } from "@/lib/waLink";
@@ -239,6 +240,8 @@ export default function EventPricingCalculator({
   const [askContract, setAskContract] = useState(false);
   const [sentWithContract, setSentWithContract] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
+  // "תיק העבודות שלי:" in the quote link message (owner, 2026-11-07).
+  const portfolioUrl = usePortfolioUrl();
   // The language of the client's pages (quote page, contract, portal, gallery), sent with the save.
   // Follows a same-phone lead found on the preview until the photographer picks one.
   const [clientLang, setClientLang] = useState<string>(initialClientLang ?? "he");
@@ -738,7 +741,7 @@ export default function EventPricingCalculator({
           withContract,
           messageLang,
           false,
-          { clientName: quoteClientName }
+          { clientName: quoteClientName, portfolioUrl }
         )
       : "";
   const linkMessage = messageFor(sentWithContract);

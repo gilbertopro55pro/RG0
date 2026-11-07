@@ -291,3 +291,29 @@ describe("galleryStageOf", () => {
     expect(text).toBe("היי דנה,\nהגלריה מוכנה.\nקישור: https://myframeflow.com/s/gABC\n\nסטודיו אור");
   });
 });
+
+describe("buildClientMessageText: amounts before VAT (owner, 2026-11-07)", () => {
+  const tpl = "מקדמה: {{מקדמה_ללא_מעמ}}\nיתרה: {{יתרה_ללא_מעמ}}";
+
+  it("an עוסק מורשה: the amount without the VAT in it, and 'לא כולל מע״מ' (not on ₪0)", () => {
+    expect(buildClientMessageText(params({ savedTemplate: tpl, taxStatus: "licensed", depositAmount: 0, balanceAmount: 2242 }))).toBe(
+      `דנה,\nמקדמה: ₪0\nיתרה: ₪1,900 לא כולל מע״מ\nקישור: ${URL_}`,
+    );
+    expect(buildClientMessageText(params({ stageKey: "album_design", savedTemplate: "{{יתרה_ללא_מעמ}}", taxStatus: "licensed", balanceAmount: 2200 }))).toBe(
+      "₪1,864.41 לא כולל מע״מ",
+    );
+  });
+
+  it("an עוסק פטור has no VAT: the amount as it is, without the words", () => {
+    expect(buildClientMessageText(params({ stageKey: "album_design", savedTemplate: tpl, taxStatus: "exempt", depositAmount: 500, balanceAmount: 2242 }))).toBe(
+      "מקדמה: ₪500\nיתרה: ₪2,242",
+    );
+    expect(buildClientMessageText(params({ stageKey: "album_design", savedTemplate: "{{יתרה_ללא_מעמ}}", balanceAmount: 2242 }))).toBe("₪2,242");
+  });
+
+  it("no amount: empty; the old tokens keep the amount as it is; English says 'excluding VAT'", () => {
+    expect(buildClientMessageText(params({ stageKey: "album_design", savedTemplate: "[{{יתרה_ללא_מעמ}}]", taxStatus: "licensed", balanceAmount: null }))).toBe("[]");
+    expect(buildClientMessageText(params({ stageKey: "album_design", savedTemplate: "{{יתרה}}", taxStatus: "licensed", balanceAmount: 2242 }))).toBe("₪2,242");
+    expect(buildClientMessageText(params({ stageKey: "album_design", savedTemplate: "{{יתרה_ללא_מעמ}}", taxStatus: "licensed", balanceAmount: 2242, lang: "en" }))).toBe("₪1,900 excluding VAT");
+  });
+});

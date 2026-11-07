@@ -76,11 +76,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       .returns<{ access_token: string; published: boolean; archived_at: string | null; activated: boolean | null }[]>(),
     supabase
       .from("photographers")
-      .select("name, whatsapp_signature, invoice_provider, finbot_api_key, green_invoice_api_id, green_invoice_api_secret")
+      .select("name, whatsapp_signature, business_tax_status, invoice_provider, finbot_api_key, green_invoice_api_id, green_invoice_api_secret")
       .eq("id", user.id)
       .maybeSingle<{
         name: string | null;
         whatsapp_signature: string | null;
+        business_tax_status: "exempt" | "licensed" | null;
         invoice_provider: InvoiceProvider;
         finbot_api_key: string | null;
         green_invoice_api_id: string | null;
@@ -129,6 +130,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       linkUrl,
       whatsappSignature: photographer.whatsapp_signature ?? null,
       senderName: photographer.name ?? null,
+      taxStatus: photographer.business_tax_status,
       lang,
       alwaysLink: opts.alwaysLink,
     });

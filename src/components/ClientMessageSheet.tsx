@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import BodyPortal from "@/components/BodyPortal";
+import SnoozePicker, { type SnoozeChoice } from "@/components/SnoozePicker";
 import { useT } from "@/i18n/client";
 import type { Lang } from "@/i18n/config";
 import { buildWaMeLink } from "@/lib/waLink";
@@ -22,6 +23,7 @@ export default function ClientMessageSheet({
   subject,
   onSend,
   onClose,
+  onRemind,
 }: {
   title: string;
   intro: ReactNode;
@@ -33,9 +35,14 @@ export default function ClientMessageSheet({
   subject: string;
   onSend: (channel: ClientMessageChannel) => void;
   onClose: () => void;
+  // A reminder window (PendingClientMessagePrompts): "להזכיר לי מאוחר יותר" puts it off
+  // (SnoozePicker, lib/reminderSnooze.ts), then the window closes.
+  onRemind?: (when: SnoozeChoice) => Promise<void>;
 }) {
   const t = useT();
   const [text, setText] = useState(initialText);
+  const [snoozing, setSnoozing] = useState(false);
+  const [snoozeBusy, setSnoozeBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const sendVia = (channel: ClientMessageChannel) => () => {
     onSend(channel);
@@ -98,9 +105,31 @@ export default function ClientMessageSheet({
               {copied ? t("ההודעה הועתקה ✓") : t("העתקת ההודעה")}
             </button>
           </div>
-          <button onClick={onClose} className="h-10 mt-2 rounded-xl text-sm font-semibold text-ink-soft">
-            {t("ביטול")}
-          </button>
+          {onRemind && snoozing ? (
+            <div className="mt-3">
+              <SnoozePicker
+                busy={snoozeBusy}
+                onPick={async (when) => {
+                  setSnoozeBusy(true);
+                  await onRemind(when);
+                  setSnoozeBusy(false);
+                  onClose();
+                }}
+                onBack={() => setSnoozing(false)}
+              />
+            </div>
+          ) : (
+            <div className={onRemind ? "grid grid-cols-2 gap-2 mt-2" : ""}>
+              {onRemind && (
+                <button onClick={() => setSnoozing(true)} className="h-10 rounded-xl text-sm font-semibold text-ink border border-line bg-white">
+                  {t("להזכיר לי מאוחר יותר")}
+                </button>
+              )}
+              <button onClick={onClose} className={`h-10 rounded-xl text-sm font-semibold text-ink-soft ${onRemind ? "" : "w-full mt-2"}`}>
+                {t("ביטול")}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </BodyPortal>

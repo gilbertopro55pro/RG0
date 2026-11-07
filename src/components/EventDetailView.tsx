@@ -225,6 +225,7 @@ export default function EventDetailView({
   messageTemplates,
   whatsappSignature,
   senderName = null,
+  taxStatus = null,
   canChooseClientLang = false,
   clientMessageLang = "he",
   albumCorrections = null,
@@ -251,6 +252,8 @@ export default function EventDetailView({
   whatsappSignature: string | null;
   // The owner's name: the messages are signed with it when there's no WhatsApp signature.
   senderName?: string | null;
+  // The owner's tax status: the amounts before VAT in the client messages (lib/clientMessage.ts).
+  taxStatus?: "exempt" | "licensed" | null;
   // The client-language picker in the edit form (admin only for now, lib/clientLang.ts).
   canChooseClientLang?: boolean;
   // The language of the WhatsApp updates to this client (clientLangFor on the server page).
@@ -495,6 +498,7 @@ export default function EventDetailView({
       alwaysLink: key === songStageKey,
       whatsappSignature,
       senderName,
+      taxStatus,
       lang: clientMessageLang,
     });
   };

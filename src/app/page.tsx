@@ -68,6 +68,7 @@ import { albumApprovalByEvent, type AlbumStateRow } from "@/lib/albumApproval";
 import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
 import { FOLLOW_UP_LEAD_COLUMNS, quoteFollowUpHandled, type FollowUpLeadState } from "@/lib/leadFollowUp";
 import { vividForEmail } from "@/lib/vivid";
+import { isSnoozed } from "@/lib/reminderSnooze";
 import { homeHeaderCounts, onlyNewLeads, stageTrack } from "@/lib/homeVivid";
 import HomeVividPills from "@/components/HomeVividPills";
 import { VIVID_ICON_BOX, vividIconStyle } from "@/components/homeVividStyles";
@@ -357,6 +358,7 @@ export default async function DashboardPage() {
           : shortClientUrl(SITE_URL, "portal", e.client_access_token),
       whatsappSignature: photographer.whatsapp_signature ?? null,
       senderName: photographer.name ?? null,
+      taxStatus: photographer.business_tax_status,
       lang,
       alwaysLink: songs,
     });
@@ -462,10 +464,13 @@ export default async function DashboardPage() {
   // The amount still open after partial payments (lib/openBalances.ts, the same as the dashboard's
   // open balances and the reminder itself), out of the `payments` batch already fetched above. A
   // reminder whose client has paid it all since doesn't come up.
+  // A reminder window put off with "תזכורת" waits until its time (lib/reminderSnooze.ts).
+  const snoozeNow = new Date().getTime();
+  const activeReminders = (scheduledReminders ?? []).filter((s) => !isSnoozed(s.remind_at, snoozeNow));
   const reminderRecognized = new Set(closingRecognitions(events ?? [], payments ?? []).map((r) => r.eventId));
   const openByEvent = new Map((payments ?? []).map((p) => [p.event_id, openAmount(p, reminderRecognized.has(p.event_id)).total]));
   const pendingReminders: PendingPaymentReminder[] = photographer
-    ? (scheduledReminders ?? [])
+    ? activeReminders
         .filter((s) => s.kind === "payment_reminder")
         .map((s) => ({
           type: "payment" as const,
@@ -476,12 +481,12 @@ export default async function DashboardPage() {
         .filter((r) => r.balanceAmount > 0)
     : [];
   const pendingReviewRequests: PendingReviewRequest[] = photographer
-    ? (scheduledReminders ?? [])
+    ? activeReminders
         .filter((s) => s.kind === "review_request")
         .map((s) => ({ type: "review" as const, id: s.id, clientName: s.events?.client_name ?? t("לקוח") }))
     : [];
   const pendingClientReminders: PendingClientReminder[] = photographer
-    ? (scheduledReminders ?? [])
+    ? activeReminders
         .filter((s) => s.kind === "album_approval_reminder" || s.kind === "song_selection_reminder")
         .map((s) => ({
           type: s.kind === "album_approval_reminder" ? ("album_reminder" as const) : ("song_reminder" as const),
@@ -496,7 +501,7 @@ export default async function DashboardPage() {
   const reminderToday = israelTodayIso();
   const pendingShootDayReminders: PendingShootDayReminder[] = [];
   if (photographer) {
-    for (const s of (scheduledReminders ?? []).filter((r) => r.kind === "shoot_day_reminder")) {
+    for (const s of activeReminders.filter((r) => r.kind === "shoot_day_reminder")) {
       const e = (events ?? []).find((ev) => ev.id === s.event_id);
       if (!e?.client_phone || e.event_date < reminderToday) continue;
       const lang = clientLangFor(photographer.email, e.client_lang);
@@ -520,7 +525,7 @@ export default async function DashboardPage() {
   const pendingSongStageReminders: PendingSongStageReminder[] = [];
   if (photographer) {
     const customById = new Map((customStageNames ?? []).map((cs) => [cs.id, cs]));
-    for (const s of (scheduledReminders ?? []).filter((r) => r.kind === "song_stage_reminder")) {
+    for (const s of activeReminders.filter((r) => r.kind === "song_stage_reminder")) {
       const e = (events ?? []).find((ev) => ev.id === s.event_id);
       if (!e?.client_phone || e.closed_at || e.songs_chosen_at) continue;
       const song = openSongStage(roleStages(e.event_stages, customById, STAGE_LABELS));
@@ -536,7 +541,7 @@ export default async function DashboardPage() {
   // since (lib/leadFollowUp.ts; the reminders cron then closes it).
   const nowMs = new Date().getTime();
   const pendingLeadFollowUps: PendingLeadFollowUp[] = photographer
-    ? (scheduledReminders ?? [])
+    ? activeReminders
         .filter((s) => s.kind === "lead_quote_followup")
         .filter((s) => !(s.remind_at && Date.parse(s.remind_at) > nowMs) && !quoteFollowUpHandled(s.leads, s.remind_set_at))
         .map((s) => ({
