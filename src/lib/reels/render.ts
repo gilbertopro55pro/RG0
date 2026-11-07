@@ -3,6 +3,7 @@ import { clamp01, drawGrain, drawSegment, easeOut, type ReelImage, type Scene } 
 import type { SegTiming } from "./proshow";
 import { drawTransition } from "./transitions";
 import { applyFxPost, applyFxTransform, fxEvents, fxSpec } from "./beatFx";
+import { applyLook, cutClock, drawKineticBlock, drawWithCamera, finishLook, kineticStep, letterboxIn, lookCamera, outroBackdrop, type KLine } from "./capcut";
 import { REEL_LENGTHS, type ReelLength } from "./templates";
 import {
   HARD_AVG,
@@ -469,15 +470,29 @@ export function drawReelFrame(
   // The on-beat effects: the zoom punch and shake move the picture as it's drawn, the rest pass
   // over it (beatFx.ts).
   const fx = fxEvents(t, tl, fxSpec(tpl, settings));
-  ctx.save();
-  applyFxTransform(ctx, W, H, fx);
-  drawPictures(ctx, sc, t, tl);
-  ctx.restore();
-  applyFxPost(ctx, W, H, fx);
+  const look = tpl.look;
+  // A CapCut-style look (capcut.ts): the camera moves the pictures, its grade and light go over
+  // them, the on-beat effects over that, then its dust, vignette and opening.
+  const clock = look ? cutClock(t, tl, look.accentEvery) : null;
+  const salt = settings.seed * 977 + 13;
+  if (look && clock) {
+    drawWithCamera(ctx, W, H, lookCamera(look, clock, W, H), (c) => {
+      applyFxTransform(c, W, H, fx);
+      drawPictures(c, sc, t, tl);
+    });
+    applyLook(ctx, W, H, clock, look, salt);
+    applyFxPost(ctx, W, H, fx);
+    finishLook(ctx, W, H, clock, look, tpl.grain, salt);
+  } else {
+    ctx.save();
+    applyFxTransform(ctx, W, H, fx);
+    drawPictures(ctx, sc, t, tl);
+    ctx.restore();
+    applyFxPost(ctx, W, H, fx);
+    if (tpl.grain) drawGrain(ctx, W, H, t, 0.06);
+  }
 
-  if (tpl.grain) drawGrain(ctx, W, H, t, 0.06);
-
-  const bar = tpl.letterbox ? H * 0.1 : 0;
+  const bar = tpl.letterbox ? H * 0.1 * (look ? letterboxIn(look.intro, t) : 1) : 0;
   if (bar) {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, W, bar);
@@ -486,14 +501,16 @@ export function drawReelFrame(
 
   const { text } = settings;
   if (text.show) {
-    const look = textLook(tpl.textStyle, fonts, W);
+    const look0 = textLook(tpl.textStyle, fonts, W);
+    const tlook = look?.titleScale ? { ...look0, title: { ...look0.title, size: look0.title.size * look.titleScale } } : look0;
     const y = text.position === "top" ? bar + H * 0.16 : text.position === "center" ? H * 0.5 : H - bar - H * 0.17;
     // The title opens the reel: in over 0.6s, held, out before the second photo is well under way.
     const titleEnd = Math.min(tl.total - tl.tail, Math.max(1.8, Math.min(3.2, tl.durs[0] + (tl.durs[1] ?? 0) * 0.6)));
-    const aIn = easeOut(clamp01((t - 0.25) / 0.6));
-    const aOut = 1 - clamp01((t - (titleEnd - 0.5)) / 0.5);
+    const aIn = easeOut(clamp01((t - (look ? 0.15 : 0.25)) / (look ? 0.4 : 0.6)));
+    const outLen = look ? 0.35 : 0.5;
+    const aOut = 1 - clamp01((t - (titleEnd - outLen)) / outLen);
     const a = Math.min(aIn, aOut);
-    if (a > 0 && !look.boxed && (text.title.trim() || text.subtitle.trim())) {
+    if (a > 0 && !tlook.boxed && (text.title.trim() || text.subtitle.trim())) {
       // A soft scrim behind the text so it reads on any photo.
       const g = ctx.createLinearGradient(0, y - H * 0.2, 0, y + H * 0.2);
       g.addColorStop(0, "rgba(0,0,0,0)");
@@ -502,18 +519,69 @@ export function drawReelFrame(
       ctx.fillStyle = g;
       ctx.fillRect(0, y - H * 0.2, W, H * 0.4);
     }
-    drawTextBlock(ctx, W, { text: text.title, style: text.styles.title }, { text: text.subtitle, style: text.styles.subtitle }, y, a, look, fonts);
+    if (look) {
+      // Word by word, on the beat (capcut.ts).
+      const lines = kineticLines(ctx, W, text.title, text.styles.title, text.subtitle, text.styles.subtitle, tlook, fonts);
+      ctx.save();
+      drawKineticBlock(ctx, W, lines.title, lines.sub, y, {
+        style: look.kinetic,
+        lt: t - 0.2,
+        out: 1 - aOut,
+        step: kineticStep(tl.beat),
+        shadow: tlook.shadow,
+        glow: look.textGlow,
+        line: tlook.line,
+      });
+      ctx.restore();
+    } else drawTextBlock(ctx, W, { text: text.title, style: text.styles.title }, { text: text.subtitle, style: text.styles.subtitle }, y, a, tlook, fonts);
     if (tl.tail > 0) {
       const endStart = tl.total - tl.tail;
       const ea = easeOut(clamp01((t - endStart - 0.1) / 0.6));
       if (ea > 0) {
-        ctx.fillStyle = `rgba(0,0,0,${0.45 * ea})`;
-        ctx.fillRect(0, 0, W, H);
-        drawTextBlock(ctx, W, { text: text.ending, style: text.styles.ending }, null, H * 0.5, ea, { ...look, boxed: false }, fonts);
+        if (look) {
+          outroBackdrop(ctx, W, H, ea);
+          const lines = kineticLines(ctx, W, text.ending, text.styles.ending, "", text.styles.subtitle, tlook, fonts);
+          ctx.save();
+          drawKineticBlock(ctx, W, lines.title, [], H * 0.5, {
+            style: look.kinetic,
+            lt: t - endStart - 0.15,
+            out: 0,
+            step: kineticStep(tl.beat),
+            shadow: tlook.shadow,
+            glow: look.textGlow,
+            line: false,
+          });
+          ctx.restore();
+        } else {
+          ctx.fillStyle = `rgba(0,0,0,${0.45 * ea})`;
+          ctx.fillRect(0, 0, W, H);
+          drawTextBlock(ctx, W, { text: text.ending, style: text.styles.ending }, null, H * 0.5, ea, { ...tlook, boxed: false }, fonts);
+        }
       }
     }
   }
   ctx.restore();
+}
+
+// The lines of a title and its subtitle, wrapped and measured, for the word-by-word text.
+function kineticLines(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  title: string,
+  titleStyle: ReelLineStyle,
+  subtitle: string,
+  subStyle: ReelLineStyle,
+  look: TextLook,
+  fonts: ReelFonts
+): { title: KLine[]; sub: KLine[] } {
+  const maxW = W * 0.84;
+  ctx.save();
+  const out = {
+    title: layoutLines(ctx, title, look.title, titleStyle, fonts, maxW, 1.15),
+    sub: subtitle ? layoutLines(ctx, subtitle, look.sub, subStyle, fonts, maxW, 1.5) : [],
+  };
+  ctx.restore();
+  return out;
 }
 
 // One transition on a loop, for the picker's thumbnails: the first photo, the move, the second.

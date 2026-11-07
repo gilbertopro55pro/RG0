@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/i18n/client";
 import {
+  DEFAULT_REEL_TEMPLATE_ID,
   REEL_BEAT_FX,
   REEL_LENGTHS,
   REEL_PLATFORMS,
@@ -182,7 +183,7 @@ export default function ReelBuilder({
   const [picking, setPicking] = useState(false);
   const [settings, setSettings] = useState<ReelSettings>(() => ({
     platform: "ig-reel",
-    templateId: REEL_TEMPLATES[0].id,
+    templateId: DEFAULT_REEL_TEMPLATE_ID,
     length: 15,
     fit: "blur",
     blur: 60,
@@ -198,7 +199,7 @@ export default function ReelBuilder({
       ending: studioName ?? "",
       position: "bottom",
       show: true,
-      styles: defaultLineStyles(REEL_TEMPLATES[0]),
+      styles: defaultLineStyles(templateById(DEFAULT_REEL_TEMPLATE_ID)),
     },
   }));
   const [images, setImages] = useState<Map<string, ReelImage>>(new Map());
@@ -1059,10 +1060,22 @@ export default function ReelBuilder({
                 </section>
 
                 <section>
+                  <p className={sectionTitle}>{t("בסגנון קאפקאט")}</p>
+                  <p className={sectionHint}>
+                    {t("תנועת מצלמה שנוחתת על הביט, גוון צבע, אור ואפקטים מעל התמונות, וטקסט שנכנס מילה אחרי מילה. עם שיר מהספרייה או שיר שהעליתם החיתוכים נופלים על הביט שלו.")}
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {REEL_TEMPLATES.filter((tp) => tp.look).map((tp) => (
+                      <TemplateCard key={tp.id} tp={tp} active={settings.templateId === tp.id} onPick={() => chooseTemplate(tp)} />
+                    ))}
+                  </div>
+                </section>
+
+                <section>
                   <p className={sectionTitle}>{t("תבנית")}</p>
                   <p className={sectionHint}>{t("התנועה, המעברים והטקסט של הסרטון. אפשר לשנות כל אחד מהם אחר כך.")}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {REEL_TEMPLATES.filter((tp) => !tp.beat).map((tp) => (
+                    {REEL_TEMPLATES.filter((tp) => !tp.beat && !tp.look).map((tp) => (
                       <TemplateCard key={tp.id} tp={tp} active={settings.templateId === tp.id} onPick={() => chooseTemplate(tp)} />
                     ))}
                   </div>
@@ -1074,7 +1087,7 @@ export default function ReelBuilder({
                     {t("כמו בקאפקאט: כל חיתוך נופל בדיוק על הביט של השיר, עם אפקט שמכה עליו. כל תבנית באה עם שיר מהספרייה, ואפשר להחליף אותו או להעלות שיר משלכם.")}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {REEL_TEMPLATES.filter((tp) => tp.beat).map((tp) => (
+                    {REEL_TEMPLATES.filter((tp) => tp.beat && !tp.look).map((tp) => (
                       <TemplateCard key={tp.id} tp={tp} active={settings.templateId === tp.id} onPick={() => chooseTemplate(tp)} />
                     ))}
                   </div>
