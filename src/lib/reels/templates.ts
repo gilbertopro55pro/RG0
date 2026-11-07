@@ -404,10 +404,13 @@ export type ReelLength = (typeof REEL_LENGTHS)[number];
 export type ReelMusic = {
   // "sync": a song the photographer adds in Instagram or TikTok (owner, 2026-10-15). Its file is
   // used only to cut on its beat and to hear it in the preview; the exported video has no sound.
-  source: "none" | "library" | "upload" | "sync";
+  // "recording": a screen recording of a reel with the song (owner, 2026-11-04, recording.ts); its
+  // song is in the file, or with `inApp` the file is silent and the song is added in the app.
+  source: "none" | "library" | "upload" | "sync" | "recording";
   trackId: string; // library track (music.ts)
   volume: number; // 0-1
   offset: number; // seconds into the track where the reel starts
+  inApp?: boolean;
 };
 
 export type ReelSettings = {

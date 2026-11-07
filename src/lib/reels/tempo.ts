@@ -110,18 +110,26 @@ export function detectTempo(samples: Float32Array, sampleRate: number): Detected
   return { bpm, firstBeat, confidence: Math.round(confidence * 100) / 100 };
 }
 
-// The browser's decoded track: the channels averaged (the opening minute only), then detectTempo.
-export function detectTempoFromBuffer(buffer: AudioBuffer): DetectedTempo | null {
-  const n = Math.min(buffer.length, Math.floor(MAX_SECONDS * buffer.sampleRate));
+// The browser's decoded track: the channels averaged (the opening minute only, from `from`
+// seconds: a screen recording's song starts after a moment of silence, recording.ts), then
+// detectTempo. `firstBeat` is still within the first beat of the whole file.
+export function detectTempoFromBuffer(buffer: AudioBuffer, from = 0): DetectedTempo | null {
+  const skip = Math.max(0, Math.min(buffer.length, Math.floor(from * buffer.sampleRate)));
+  const n = Math.min(buffer.length - skip, Math.floor(MAX_SECONDS * buffer.sampleRate));
   const channels = buffer.numberOfChannels;
-  if (!n || !channels) return null;
+  if (n <= 0 || !channels) return null;
   const mono = new Float32Array(n);
   for (let c = 0; c < channels; c++) {
     const data = buffer.getChannelData(c);
-    for (let i = 0; i < n; i++) mono[i] += data[i];
+    for (let i = 0; i < n; i++) mono[i] += data[skip + i];
   }
   if (channels > 1) for (let i = 0; i < n; i++) mono[i] /= channels;
-  return detectTempo(mono, buffer.sampleRate);
+  const found = detectTempo(mono, buffer.sampleRate);
+  if (!found || !skip) return found;
+  const period = 60 / found.bpm;
+  let firstBeat = Math.round((((skip / buffer.sampleRate + found.firstBeat) % period) + period) % period * 1000) / 1000;
+  if (firstBeat >= period - 0.0005) firstBeat = 0;
+  return { ...found, firstBeat };
 }
 
 // Onset strength per ~10 ms frame: in each octave band, how much the log energy rose since the
