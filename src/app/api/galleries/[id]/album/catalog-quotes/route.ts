@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { ADMIN_EMAIL } from "@/lib/admin";
+import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { downloadObjectBuffer, getPublicPreviewUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
@@ -13,8 +14,8 @@ export const maxDuration = 60;
 // The catalog style's line on a page (owner, 2026-11-02): a very short positive English quote that
 // matches what the page's photos show. Claude looks at up to 3 small copies of each page's photos and
 // picks from the list in catalogQuotes.ts (or writes a short line of its own when none fits). Only
-// the photos go, small (512px), with no name or other detail. The auto designer is admin-only, and so
-// is this route; release both together.
+// the photos go, small (512px), with no name or other detail. Open with the automatic designer
+// (released 2026-11-07): פרו and פרו+, as the album editor; the entry plan gets the plain lines.
 
 const MODEL = "claude-sonnet-5-5";
 const MAX_SPREADS = 30;
@@ -84,10 +85,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
-  if (user.email?.toLowerCase() !== ADMIN_EMAIL) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
 
   const spreads = parseSpreads(await request.json().catch(() => null));
   if (!spreads) return NextResponse.json({ error: "בקשה לא תקינה" }, { status: 400 });
+
+  // The album editor is פרו and up (GalleryManageView, nonBasicTierAllowed): the entry plan gets the
+  // lines picked by the tabs' names, without Claude. A team member has no row and uses the studio's.
+  if (user.email?.toLowerCase() !== ADMIN_EMAIL) {
+    const { data: me } = await supabase.from("photographers").select("plan").eq("id", user.id).maybeSingle<{ plan: SubscriptionPlan }>();
+    if (me && SUBSCRIPTION_PLANS[me.plan]?.tier === "basic") return NextResponse.json({ quotes: Object.fromEntries(quotesFromPicks(null, spreads)), source: "fallback" });
+  }
 
   // The photos must be in this gallery (RLS: the photographer's own).
   const ids = [...new Set(spreads.flatMap((s) => s.photoIds))];

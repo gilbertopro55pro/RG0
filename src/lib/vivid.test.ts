@@ -9,22 +9,20 @@ import { ADMIN_EMAIL } from "@/lib/admin";
 const withClaims = (claims: Record<string, unknown> | null) =>
   vi.mocked(createClient).mockResolvedValue({ auth: { getClaims: async () => ({ data: claims ? { claims } : null }) } } as never);
 
-describe("vivid look: admin only", () => {
-  it("is on for the admin account only", () => {
+describe("vivid look: every signed-in photographer (released 2026-11-07)", () => {
+  it("is on for any account, off without one", () => {
     expect(vividForEmail(ADMIN_EMAIL)).toBe(true);
-    expect(vividForEmail(ADMIN_EMAIL.toUpperCase())).toBe(true);
-    expect(vividForEmail("someone@example.com")).toBe(false);
+    expect(vividForEmail("someone@example.com")).toBe(true);
     expect(vividForEmail(null)).toBe(false);
+    expect(vividForEmail("")).toBe(false);
   });
 
   it("reads the session, and never turns on for a page a client sees", async () => {
-    withClaims({ email: ADMIN_EMAIL });
+    withClaims({ email: "someone@example.com" });
     expect(await vividForRequest("/")).toBe(true);
     expect(await vividForRequest("/events/1")).toBe(true);
     expect(await vividForRequest("/gallery/abc")).toBe(false);
     expect(await vividForRequest("/portal/abc")).toBe(false);
-    withClaims({ email: "someone@example.com" });
-    expect(await vividForRequest("/")).toBe(false);
     withClaims(null);
     expect(await vividForRequest("/")).toBe(false);
   });

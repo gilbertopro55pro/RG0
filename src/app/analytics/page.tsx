@@ -6,7 +6,6 @@ import type { PackageType } from "@/lib/stages";
 import AnalyticsView from "@/components/AnalyticsView";
 import { hasAppAccess } from "@/lib/subscription";
 import { PAYMENT_REMINDER_LOG_MARK } from "@/lib/paymentReminder";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { showsVat, vatReceipts, type ReceiptLinkVatRow } from "@/lib/receiptVat";
 
@@ -28,10 +27,10 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const { tab } = await searchParams;
   const supabase = await createClient();
   const user = await getSessionUser();
-  // VAT of the receipts issued from the system (owner, 2026-11-04, "עדכון אדמין": admin only for
-  // now). `receipt_links` is server-only (no RLS policies), so it's read with the service role, for
-  // this account alone.
-  const vatAllowed = user?.email === ADMIN_EMAIL;
+  // VAT of the receipts issued from the system (owner, 2026-11-04; for everyone from 2026-11-07).
+  // `receipt_links` is server-only (no RLS policies), so it's read with the service role, for this
+  // account alone.
+  const vatAllowed = !!user;
 
   // The collection tools in the open balances tab: a payment reminder per client (owner,
   // 2026-10-19). The last reminder per event comes from the event log, which also has the ones sent

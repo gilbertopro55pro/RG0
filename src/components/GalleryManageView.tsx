@@ -5124,12 +5124,12 @@ export default function GalleryManageView({
                   sizePresets={ALBUM_SIZE_PRESETS}
                   onCreate={createAutoDesignedAlbum}
                   onCancel={() => setAutoDesignOpen(false)}
+                  allStyles={photographerEmail === ADMIN_EMAIL}
                 />
               ) : (
               <>
-                {/* Admin only again (owner, 2026-10-06): the result still needs polish (layouts not
-                    tidy enough, photo order mixed up). Was open to every plan from 2026-09-30. */}
-                {photographerEmail === ADMIN_EMAIL && (
+                {/* פרו and פרו+ (this branch is after nonBasicTierAllowed). Admin only from 2026-10-06
+                    to 2026-11-07, then released with "קו נקי" and "קטלוג" only (styleAccess.ts). */}
                 <button
                   type="button"
                   onClick={openAutoDesign}
@@ -5141,7 +5141,6 @@ export default function GalleryManageView({
                   </span>
                   <span className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold bg-ink text-white">{t("התחלה")}</span>
                 </button>
-                )}
                 <p className="text-xs text-ink-soft mb-3.5">
                   {t("קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד, ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.")}
                 </p>
@@ -5650,8 +5649,8 @@ export default function GalleryManageView({
                           >
                             <IconAlbumClose size={9} />
                           </button>
-                          {/* Part of the automatic designer: admin only for now, like it (2026-10-06). */}
-                          {photographerEmail === ADMIN_EMAIL && spread.width_cm === null && (
+                          {/* Part of the automatic designer: פרו and פרו+, like it (released 2026-11-07). */}
+                          {nonBasicTierAllowed && spread.width_cm === null && (
                             <button
                               onClick={() => redesignSpread(spread)}
                               disabled={redesigning !== null}
@@ -5776,7 +5775,6 @@ export default function GalleryManageView({
               sidePanelOffset={albumSidePanelOffset}
               onSidePanelOffsetChange={setAlbumSidePanelOffset}
               draft={canvasDraftRef.current?.spreadId === spread.id ? canvasDraftRef.current : null}
-              isAdmin={photographerEmail === ADMIN_EMAIL}
               bookSize={{ width_cm: album.width_cm, height_cm: album.height_cm }}
               leftInsetPx={correctionsInset}
               switchSpreadRef={switchSpreadRef}

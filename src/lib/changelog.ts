@@ -11,6 +11,37 @@ export { changesFor, type ChangelogEntry } from "@/lib/changelogEntry";
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.14.0",
+    date: "2026-11-07",
+    changes: [
+      "חדש: עיצוב אוטומטי של כל האלבום, במסלולי פרו ופרו+. בוחרים מידות, סגנון (\"קו נקי\" או \"קטלוג\") ואת בני המשפחה, והאלבום כולו מעוצב לבד, לפי הלשוניות בגלריה",
+      "סגנון \"קטלוג\" הוא בוק מעוצב: תמונה ראשית גדולה, רשתות ממוסגרות, משושים ופאנל שקוף, ומשפטים קצרים באנגלית שמתאימים לתמונות של כל דף",
+      "אלבום חתונה נבנה לפי השלבים (הכנות, צילומי חוץ, חופה, ריקודים), גלריה עם בוק ועם האירוע יוצאת כאלבום משולב, ובוק יוצא בדיוק במספר העמודים שבחרתם. אפשר לבחור צבע ועובי לקו המתאר של התמונות",
+      "\"עיצוב מחדש\" מתחת לכל עמוד בתצוגה המקדימה של האלבום: כל לחיצה מציעה פריסה אחרת לאותן תמונות",
+      "43 מסכות חדשות בעורך האלבום: שוליים מרוססים, מכחול יבש, תחרה, זר עלים, פרחים בפינות, לבבות, ענן, חותם, מסגרת וינטג׳, נייר קרוע, פאזל, זכוכית מנופצת ועוד",
+      "בדשבורד, לעוסק מורשה: כמה מע״מ יש בקבלות שהופקו במערכת, לחודש או לשנה, ולתקופת הדיווח הדו-חודשית",
+      "מראה חדש עם יותר צבע: לכל מצב צבע עם משמעות (ירוק שולם, כחול בקרוב, אדום דורש טיפול, צהוב ממתין, סגול גלריות ואלבום). במסך הבית: כרטיס בולט לצילום הבא עם פס השלבים, \"אירועים השבוע\" ו\"דורשים טיפול\" בלחיצה, אייקון צבעוני לכל כלי, והכנסות עם מה שהתקבל ומה שצפוי",
+    ],
+    en: [
+      "New: automatic design of the whole album, on the Pro and Pro+ plans. Pick the size, a style (\"Clean line\" or \"Catalog\") and the family members, and the whole album is designed for you, following the gallery's tabs",
+      "The \"Catalog\" style is a designed photo book: a large main photo, framed grids, hexagons and a see-through panel, with short English lines that match each page's photos",
+      "A wedding album follows the day's stages (getting ready, outdoor shoot, ceremony, dancing), a gallery with a book shoot and the event comes out as one combined album, and a book comes out at exactly the number of pages you chose. You can pick the color and thickness of the photos' outline",
+      "\"Redesign\" under every page in the album preview: each tap offers a different layout for the same photos",
+      "43 new masks in the album editor: spray edges, dry brush, lace, a leaf wreath, corner flowers, hearts, a cloud, a stamp, a vintage frame, torn paper, a puzzle, shattered glass and more",
+      "On the dashboard, for a licensed business (עוסק מורשה): the VAT in the receipts issued from the system, for the month or the year, and for the two-month reporting period",
+      "A new, more colorful look: every status has a color with a meaning (green paid, blue coming up, red needs attention, amber waiting, purple galleries and album). On the home screen: a prominent card for the next shoot with its stages, tappable \"events this week\" and \"need attention\", a colored icon for each tool, and income showing what was received and what's expected",
+    ],
+    ru: [
+      "Новое: автоматический дизайн всего альбома, на тарифах Pro и Pro+. Выберите размер, стиль («Чистая линия» или «Каталог») и членов семьи, и весь альбом оформится сам, по вкладкам галереи",
+      "Стиль «Каталог» — оформленная фотокнига: большое главное фото, сетки в рамках, шестиугольники и прозрачная панель, с короткими фразами на английском, подходящими к фото каждой страницы",
+      "Свадебный альбом строится по этапам дня (сборы, съёмка на природе, хупа, танцы), галерея с фотосессией и мероприятием выходит одним общим альбомом, а фотокнига — ровно на выбранное число страниц. Можно выбрать цвет и толщину контура фото",
+      "«Переоформить» под каждой страницей в предпросмотре альбома: каждое нажатие предлагает другую раскладку тех же фото",
+      "43 новые маски в редакторе альбома: напылённые края, сухая кисть, кружево, венок из листьев, цветы по углам, сердечки, облако, штамп, винтажная рамка, рваная бумага, пазл, разбитое стекло и другие",
+      "В панели аналитики, для зарегистрированного бизнеса (עוסק מורשה): сумма НДС в квитанциях, выданных из системы, за месяц или год и за двухмесячный отчётный период",
+      "Новый, более яркий вид: у каждого статуса цвет со смыслом (зелёный — оплачено, синий — скоро, красный — требует внимания, жёлтый — ожидает, фиолетовый — галереи и альбом). На главном экране: заметная карточка следующей съёмки с этапами, нажимаемые «мероприятия на этой неделе» и «требуют внимания», цветная иконка для каждого инструмента и доходы — полученные и ожидаемые",
+    ],
+  },
+  {
     version: "2.13.0",
     date: "2026-11-03",
     changes: [
