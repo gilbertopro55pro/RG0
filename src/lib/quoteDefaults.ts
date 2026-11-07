@@ -7,7 +7,7 @@ import clientQuote from "@/i18n/dict/clientQuote";
 import clientQuoteSend from "@/i18n/dict/clientQuoteSend";
 import eventTypes from "@/i18n/dict/eventTypes";
 import clientMessages from "@/i18n/dict/clientMessages";
-import { formatClientMessage } from "@/lib/clientMessageFormat";
+import { clientGreeting, clientSignature } from "@/lib/clientMessageFormat";
 import { clientGreetingName } from "@/lib/magnetApproval";
 
 // Admin-only quote extras for now (owner, 2026-10-01, "עדכון אדמין"):
@@ -80,16 +80,22 @@ function localDate(isoDate: string, lang: Lang): string | null {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-// The WhatsApp message that sends the client the quote link, in the fixed client-message shape
-// (owner, 2026-11-01, lib/clientMessageFormat.ts): "שלום {name}," (the first name, or a couple's
-// whole name, clientGreetingName), the caption, what the client can do there (approve, and sign the
-// contract when withContract), the "קישור:" line with the /quotes/<token> link, a blank line, then
-// the photographer's WhatsApp signature (or their name without one).
-// lang: the client's language (UI languages phase 3); the signature stays as the photographer wrote it.
-// approved: sent again from the event page after the client approved it (owner, 2026-10-22), so
-// it asks to view the quote, not to approve it.
-// opts.clientName: the name for the greeting ("שלום," without one); opts.senderName: the
-// photographer's name, signed when there's no WhatsApp signature.
+// The WhatsApp message that sends the client the quote link (owner, 2026-11-07, its own shape):
+//
+//   {name} שלום,
+//   מצורפת הצעת מחיר לחתונה בתאריך 22.10.2026
+//
+//   קישור להצעת המחיר: {the /quotes/<token> link}
+//   יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר.
+//   [the contract line, when the quote ends with signing]
+//
+//   תיק העבודות שלי: {myframeflow.com/p/<slug>, when the portfolio is on}
+//   {the photographer's WhatsApp signature, or their name without one}
+//
+// `caption` is quoteShareCaption without the name ("הצעת מחיר לחתונה בתאריך …"). lang: the
+// client's language (UI languages phase 3; English and Russian greet as every client message does);
+// the signature stays as the photographer wrote it. approved: sent again from the event page after
+// the client approved it (owner, 2026-10-22), so it asks to view the quote, not to approve it.
 export function quoteLinkMessage(
   caption: string,
   url: string,
@@ -97,16 +103,19 @@ export function quoteLinkMessage(
   withContract = false,
   lang: Lang = "he",
   approved = false,
-  opts: { clientName?: string | null; senderName?: string | null } = {}
+  opts: { clientName?: string | null; senderName?: string | null; portfolioUrl?: string | null } = {}
 ): string {
   const t = quoteT(lang);
-  const body = [
-    caption.trim() || null,
-    approved ? t("בקישור אפשר לצפות בהצעת המחיר.") : t("בקישור אפשר לצפות בהצעת המחיר ולאשר אותה."),
-    withContract && !approved ? t("לאחר האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור.") : null,
-  ]
-    .filter((l) => l !== null)
-    .join("\n");
   const name = opts.clientName?.trim() ? clientGreetingName(opts.clientName) : null;
-  return formatClientMessage({ lang, name, body, link: url, signature, senderName: opts.senderName });
+  const greeting = lang === "he" ? (name ? `${name} שלום,` : "שלום,") : clientGreeting(name, lang);
+  const cap = caption.trim();
+  const intro = cap ? (lang === "he" ? `מצורפת ${cap}` : cap) : null;
+  const linkLines = [
+    `${t("קישור להצעת המחיר:")} ${url}`,
+    approved ? t("יש ללחוץ על הקישור לצפייה בהצעת המחיר.") : t("יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר."),
+    withContract && !approved ? t("לאחר האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור.") : null,
+  ];
+  const portfolio = opts.portfolioUrl?.trim() ? `${t("תיק העבודות שלי:")} ${opts.portfolioUrl.trim()}` : null;
+  const ending = [portfolio, clientSignature(signature, opts.senderName)].filter(Boolean).join("\n");
+  return [[greeting, intro].filter(Boolean).join("\n"), linkLines.filter(Boolean).join("\n"), ending].filter(Boolean).join("\n\n");
 }

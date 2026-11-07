@@ -34,49 +34,57 @@ describe("quoteShareCaption", () => {
 });
 
 describe("quoteLinkMessage", () => {
-  // The fixed client-message shape (owner, 2026-11-01): greeting, body, "קישור:" line, blank line, signature.
-  it("has the fixed shape: greeting, caption and what to do, the link line, a blank line, the signature", () => {
-    const msg = quoteLinkMessage("הילה שפירו הצעת מחיר לבר מצווה", "https://myframeflow.com/s/qX", "גילברטו", false, "he", false, { clientName: "הילה שפירו" });
+  // Its own shape (owner, 2026-11-07): "{name} שלום,", "מצורפת הצעת מחיר…", a blank line, the quote
+  // link and what to do, a blank line, the portfolio line and the signature.
+  it("has the owner's shape, with the portfolio line right above the signature", () => {
+    const msg = quoteLinkMessage("הצעת מחיר לבר מצווה בתאריך 22.10.2026", "https://myframeflow.com/s/qX", "רועי גלברט - צילום אירועים 📸", false, "he", false, {
+      clientName: "הילה שפירו",
+      portfolioUrl: "https://myframeflow.com/p/gilberto",
+    });
     expect(msg.split("\n")).toEqual([
-      "שלום הילה,",
-      "הילה שפירו הצעת מחיר לבר מצווה",
-      "בקישור אפשר לצפות בהצעת המחיר ולאשר אותה.",
-      "קישור: https://myframeflow.com/s/qX",
+      "הילה שלום,",
+      "מצורפת הצעת מחיר לבר מצווה בתאריך 22.10.2026",
       "",
-      "גילברטו",
+      "קישור להצעת המחיר: https://myframeflow.com/s/qX",
+      "יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר.",
+      "",
+      "תיק העבודות שלי: https://myframeflow.com/p/gilberto",
+      "רועי גלברט - צילום אירועים 📸",
     ]);
   });
 
-  it("adds the contract line before the link when the quote ends with signing", () => {
+  it("adds the contract line under the link, and greets without a name", () => {
     const lines = quoteLinkMessage("Q", "https://x/s/q", "S", true, "he").split("\n");
     expect(lines[0]).toBe("שלום,");
-    expect(lines[3]).toBe("לאחר האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור.");
-    expect(lines[4]).toBe("קישור: https://x/s/q");
+    expect(lines[4]).toBe("יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר.");
+    expect(lines[5]).toBe("לאחר האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור.");
   });
 
   it("keeps a couple's whole name in the greeting", () => {
-    expect(quoteLinkMessage("Q", "https://x/s/q", null, false, "he", false, { clientName: "רותם ודניאל" }).split("\n")[0]).toBe("שלום רותם ודניאל,");
+    expect(quoteLinkMessage("Q", "https://x/s/q", null, false, "he", false, { clientName: "רותם ודניאל" }).split("\n")[0]).toBe("רותם ודניאל שלום,");
   });
 
-  it("signs with the photographer's name when there's no signature, never both", () => {
+  it("signs with the photographer's name when there's no signature, never both; no portfolio line without a portfolio", () => {
     expect(quoteLinkMessage("Q", "https://x/s/q", "", false, "he", false, { senderName: "סטודיו אור" }).split("\n").at(-1)).toBe("סטודיו אור");
     const both = quoteLinkMessage("Q", "https://x/s/q", "חתימה", false, "he", false, { senderName: "סטודיו אור" });
     expect(both.split("\n").at(-1)).toBe("חתימה");
     expect(both).not.toContain("סטודיו אור");
+    expect(both).not.toContain("תיק העבודות");
+    expect(both.split("\n").at(-2)).toBe("");
   });
 
-  it("ends at the link line without a signature or a name", () => {
-    expect(quoteLinkMessage("Q", "https://x/s/q", null).split("\n").at(-1)).toBe("קישור: https://x/s/q");
+  it("ends at the instruction line without a signature, a name or a portfolio", () => {
+    expect(quoteLinkMessage("Q", "https://x/s/q", null).split("\n").at(-1)).toBe("יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר.");
   });
 
   it("translates the lines in Russian", () => {
-    const msg = quoteLinkMessage("Q", "https://x/s/q", "Студия", true, "ru", false, { clientName: "Анна Петрова" });
+    const msg = quoteLinkMessage("Q", "https://x/s/q", "Студия", true, "ru", false, { clientName: "Анна Петрова", portfolioUrl: "https://x/p/s" });
     const lines = msg.split("\n");
     expect(lines[0]).toBe("Здравствуйте, Анна!");
-    expect(msg).toContain("По ссылке можно посмотреть и подтвердить предложение.");
+    expect(msg).toContain("Ссылка на предложение: https://x/s/q");
+    expect(msg).toContain("Нажмите на ссылку, чтобы посмотреть и подтвердить предложение.");
     expect(msg).toContain("подписать договор");
-    expect(msg).toContain("Ссылка: https://x/s/q");
-    expect(lines.at(-2)).toBe("");
+    expect(lines.at(-2)).toBe("Моё портфолио: https://x/p/s");
     expect(lines.at(-1)).toBe("Студия");
   });
 });

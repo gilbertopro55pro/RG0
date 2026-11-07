@@ -127,6 +127,8 @@ export default function NewEventModal({
   const [clientMessageLang, setClientMessageLang] = useState<Lang>("he");
   const [whatsappSignature, setWhatsappSignature] = useState<string | null>(null);
   const [senderName, setSenderName] = useState<string | null>(null);
+  // The amounts before VAT in the booking confirmation (lib/clientMessage.ts).
+  const [taxStatus, setTaxStatus] = useState<"exempt" | "licensed" | null>(null);
 
   // Contract-selection step inserted between "event saved" and the existing success/WhatsApp
   // screen — promoted to every photographer (was admin-only while this flow was being tested,
@@ -162,7 +164,11 @@ export default function NewEventModal({
       } = await supabase.auth.getUser();
       if (!user || cancelled) return;
       const [{ data: photographer }, { data: templateRows }, { data: templates }] = await Promise.all([
-        supabase.from("photographers").select("name, whatsapp_signature").eq("id", user.id).maybeSingle<{ name: string | null; whatsapp_signature: string | null }>(),
+        supabase
+          .from("photographers")
+          .select("name, whatsapp_signature, business_tax_status")
+          .eq("id", user.id)
+          .maybeSingle<{ name: string | null; whatsapp_signature: string | null; business_tax_status: "exempt" | "licensed" | null }>(),
         supabase
           .from("client_message_templates")
           .select("stage_key, body")
@@ -174,6 +180,7 @@ export default function NewEventModal({
       if (cancelled) return;
       setWhatsappSignature(photographer?.whatsapp_signature ?? null);
       setSenderName(photographer?.name ?? null);
+      setTaxStatus(photographer?.business_tax_status ?? null);
       setEventClosingTemplates(Object.fromEntries((templateRows ?? []).map((r) => [r.stage_key, r.body])));
       setContractTemplates(templates ?? []);
     })();
@@ -347,6 +354,7 @@ export default function NewEventModal({
       linkUrl: portalLink,
       whatsappSignature,
       senderName,
+      taxStatus,
       lang: clientMessageLang,
     });
     openWhatsApp(clientPhone, message);

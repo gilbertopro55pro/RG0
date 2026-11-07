@@ -10,6 +10,7 @@ import { quoteLinkMessage, quoteShareCaption } from "@/lib/quoteDefaults";
 import { quoteDateDMY } from "@/lib/quoteHistory";
 import { shortClientUrl } from "@/lib/shortLinks";
 import { SITE_URL } from "@/lib/siteUrl";
+import { usePortfolioUrl } from "@/lib/usePortfolioUrl";
 import { eventQuoteTotal, type EventQuote } from "@/lib/eventQuote";
 
 type PdfLink = { kind: "preparing" } | { kind: "ready"; message: string } | { kind: "error" };
@@ -36,6 +37,8 @@ export default function EventQuoteSection({
   clientLang: Lang;
 }) {
   const t = useT();
+  // "תיק העבודות שלי:" in the quote link message (owner, 2026-11-07).
+  const portfolioUrl = usePortfolioUrl();
   const lang = useLang();
   const vivid = useVivid();
   const locale = dateLocale(lang);
@@ -58,7 +61,7 @@ export default function EventQuoteSection({
           false,
           clientLang,
           !!quote.approvedAt,
-          { clientName }
+          { clientName, portfolioUrl }
         )
       : null;
 

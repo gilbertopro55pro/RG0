@@ -13,6 +13,9 @@ import { dateLocale, type Lang } from "@/i18n/config";
 import common from "@/i18n/dict/common";
 import { formatClientMessage } from "@/lib/clientMessageFormat";
 import { makeT } from "@/i18n/translate";
+import { VAT_RATE } from "@/lib/receiptVat";
+
+const NO_VAT_LABEL: Record<Lang, string> = { he: "לא כולל מע״מ", en: "excluding VAT", ru: "без НДС" };
 
 // Where a stage's template is saved for a client language (UI languages phase 3, no migration):
 // Hebrew keeps the plain stage key, so nothing existing changes; English/Russian versions live
@@ -90,6 +93,8 @@ export function buildClientMessageText(params: {
   // Adds the link line when the template has none: the reminder to choose the clip songs, which
   // the client does in the portal (lib/songStageReminder.ts).
   alwaysLink?: boolean;
+  // The photographer's tax status (photographers.business_tax_status), for the amounts before VAT.
+  taxStatus?: "exempt" | "licensed" | null;
 }): string {
   const lang = params.lang ?? "he";
   const template = resolveClientMessageTemplate(params.stageKey, params.savedTemplate, lang);
@@ -103,6 +108,17 @@ export function buildClientMessageText(params: {
   const hhmm = (t: string | null) => (t ? t.slice(0, 5) : "");
   const hoursRange = [hhmm(params.eventStartTime), hhmm(params.eventEndTime)].filter(Boolean).join("–");
   const currency = (n: number) => `₪${n.toLocaleString(locale)}`;
+  // {{מקדמה_ללא_מעמ}} / {{יתרה_ללא_מעמ}} (owner, 2026-11-07: the booking confirmation shows the price
+  // without VAT): an event's amounts are what the client pays, VAT included (as the receipts and
+  // the VAT card count them), so an עוסק מורשה's amount is shown without the VAT in it, with "לא
+  // כולל מע״מ" (not on ₪0). An עוסק פטור has no VAT: the amount as it is.
+  const beforeVat = (n: number | null) => {
+    if (n == null) return "";
+    if (params.taxStatus !== "licensed") return currency(n);
+    const net = Math.round((n / (1 + VAT_RATE)) * 100) / 100;
+    const shown = `₪${net.toLocaleString(locale, Number.isInteger(net) ? undefined : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return net > 0 ? `${shown} ${NO_VAT_LABEL[lang]}` : shown;
+  };
   let text = template
     .split("{{שם}}").join(params.clientName)
     .split("{{שלב}}").join(stageLabel)
@@ -116,6 +132,8 @@ export function buildClientMessageText(params: {
     // template using the old spelling doesn't silently start showing a literal "{{שעת_הגעה}}"
     // in sent messages after the rename.
     .split("{{שעת_הגעה}}").join(hhmm(params.arrivalTime))
+    .split("{{מקדמה_ללא_מעמ}}").join(beforeVat(params.depositAmount))
+    .split("{{יתרה_ללא_מעמ}}").join(beforeVat(params.balanceAmount))
     .split("{{מקדמה}}").join(params.depositAmount != null ? currency(params.depositAmount) : "")
     .split("{{יתרה}}").join(params.balanceAmount != null ? currency(params.balanceAmount) : "")
     .split(marker).join(`${marker} ${params.linkUrl}`)

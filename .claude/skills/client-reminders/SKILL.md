@@ -115,5 +115,6 @@ per event and date. The home window is `ClientMessageSheet` with the photographe
 | Shoot day (`shoot_day_reminder`) | 2 | `lib/shootDayReminder.ts` | `shoot_day_reminder` |
 | Payment / review request | 1 | the cron's generic branch | none |
 | Lead / quote follow-up / contact | 3 | `lib/leadFollowUp.ts`, `lib/leadContactReminder.ts` | none |
+| "Remind me later" on any home-screen reminder window (snooze: 1h, 3h, date+time) | 3 (`remind_at` on `scheduled_messages`) | `lib/reminderSnooze.ts`, `api/scheduled-messages/[id]/snooze`, `SnoozePicker`; push from `api/cron/lead-reminders` | none |
 | Check with the print house (task) | 3 (trigger) | `lib/printCheck.ts`, migration 0196 | `print_check` + `_days` (3–14, 5) |
 | Morning digest | 3 | `lib/morningDigest.ts` | `morning_digest` + time |

@@ -7,6 +7,13 @@ import type { AreaDict } from "@/i18n/types";
 // (the Fly worker's render graph), so keep this file free of imports beyond the type.
 const dict: AreaDict = {
   en: {
+    "תזכורת: תשלום של {name}": "Reminder: {name}'s payment",
+    "תזכורת: בקשת ביקורת מ{name}": "Reminder: a review request to {name}",
+    "תזכורת: אישור עיצוב האלבום של {name}": "Reminder: {name}'s album design approval",
+    "תזכורת: בחירת שירים לקליפ של {name}": "Reminder: {name}'s clip songs",
+    "תזכורת: הודעה לפני יום הצילום של {name}": "Reminder: the message before {name}'s shoot day",
+    "תזכורת: {name}": "Reminder: {name}",
+    "לחצו כדי לפתוח את ההודעה ללקוח.": "Tap to open the message to the client.",
     "{name} עוד לא אישרו את עיצוב האלבום": "{name} hasn't approved the album design yet",
     "{name} עוד לא בחרו שירים לקליפ": "{name} hasn't picked songs for the clip yet",
     "עברו 3 ימים מאז ההודעה. לחצו לשליחת תזכורת בוואטסאפ": "It's been 3 days since your message. Tap to send a WhatsApp reminder",
@@ -196,9 +203,16 @@ const dict: AreaDict = {
     "אפשר לבצע את הפולואפ ישירות מהאפליקציה, בעמוד הלידים.": "You can follow up right from the app, on the Leads page.",
     "תזכורת: מעקב אחרי ההצעה ל{name}": "Reminder: follow up on the quote to {name}",
     "הצעת מחיר של ₪{amount}. לחצו כדי לשלוח תזכורת בוואטסאפ.": "A ₪{amount} quote. Tap to send a WhatsApp reminder.",
-    "תזכורת: ליצור קשר עם {name}": "Reminder: get in touch with {name}",
+    "תזכורת: לחזור ל{name}": "Reminder: get back to {name}",
   },
   ru: {
+    "תזכורת: תשלום של {name}": "Напоминание: оплата {name}",
+    "תזכורת: בקשת ביקורת מ{name}": "Напоминание: просьба об отзыве для {name}",
+    "תזכורת: אישור עיצוב האלבום של {name}": "Напоминание: утверждение дизайна альбома {name}",
+    "תזכורת: בחירת שירים לקליפ של {name}": "Напоминание: песни для клипа {name}",
+    "תזכורת: הודעה לפני יום הצילום של {name}": "Напоминание: сообщение перед днём съёмки {name}",
+    "תזכורת: {name}": "Напоминание: {name}",
+    "לחצו כדי לפתוח את ההודעה ללקוח.": "Нажмите, чтобы открыть сообщение клиенту.",
     "{name} עוד לא אישרו את עיצוב האלבום": "{name}: дизайн альбома ещё не утверждён",
     "{name} עוד לא בחרו שירים לקליפ": "{name}: песни для клипа ещё не выбраны",
     "עברו 3 ימים מאז ההודעה. לחצו לשליחת תזכורת בוואטסאפ": "Прошло 3 дня с вашего сообщения. Нажмите, чтобы отправить напоминание в WhatsApp",
@@ -388,7 +402,7 @@ const dict: AreaDict = {
     "אפשר לבצע את הפולואפ ישירות מהאפליקציה, בעמוד הלידים.": "Напомнить можно прямо из приложения, на странице заявок.",
     "תזכורת: מעקב אחרי ההצעה ל{name}": "Напоминание: напишите {name} по поводу предложения",
     "הצעת מחיר של ₪{amount}. לחצו כדי לשלוח תזכורת בוואטסאפ.": "Ценовое предложение на ₪{amount}. Нажмите, чтобы отправить напоминание в WhatsApp.",
-    "תזכורת: ליצור קשר עם {name}": "Напоминание: свяжитесь с {name}",
+    "תזכורת: לחזור ל{name}": "Напоминание: вернитесь к {name}",
   },
 };
 

@@ -1,4 +1,4 @@
-// "תזכורת ליצירת קשר" (owner, 2026-10-15; migration 0175): a reminder to get back to a lead, at a
+// "תזכורת למעקב" (owner, 2026-10-15; migration 0175): a reminder to get back to a lead, at a
 // date and time the photographer picks when marking the lead "יצרתי קשר" (LeadsView,
 // ContactReminderDialog). When it falls due the lead pops up in the app (ContactReminderPopup,
 // api/leads/contact-reminders) and a phone notification goes out once (api/cron/lead-reminders).
