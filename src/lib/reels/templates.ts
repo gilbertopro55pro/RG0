@@ -1,4 +1,5 @@
 import { EXTRA_TRANSITIONS, type ExtraTransition } from "./transitionsExtra";
+import type { CapcutLook } from "./capcut";
 
 // Reels from a gallery's photos (owner, 2026-10-07, admin only for now): the photographer picks
 // photos, a platform (its size) and one of five templates, edits the text, previews it live, and
@@ -118,8 +119,8 @@ export const REEL_BEAT_FX: { id: ReelBeatFx; label: string }[] = [
 export type ReelFxSpec = { cut: ReelBeatFx[]; pulse?: ReelBeatFx[]; accent?: ReelBeatFx[]; accentEvery?: number };
 
 export type ReelMotion = "kenburns" | "punch" | "pan" | "drift";
-// "pip" (owner, 2026-11-04): picture in picture, a main photo on the whole screen and a small one
-// over it, both moving (scene.ts, drawPip).
+// "pip" (owner, 2026-11-04): picture in picture like ProShow's, a main photo on the whole screen and
+// one or two framed photos flying in and out over it as layers (proshow.ts, scene.ts drawPip).
 export type ReelFrame = "full" | "framed" | "split" | "pip";
 export type ReelTextStyle = "serif" | "bold" | "cinema" | "magazine" | "modern";
 
@@ -144,11 +145,18 @@ export type ReelTemplate = {
   // the template is made for (picked with it when the reel has no music yet).
   beat?: { pattern: number[]; track: string };
   fx?: ReelFxSpec;
+  // Picture in picture: how many framed photos over the main one (1 by default, or 2).
+  insets?: 1 | 2;
+  // A CapCut-style look (capcut.ts, owner 2026-11-04): a camera on the beat, a colour grade, light
+  // and film over the picture, panels, and text that comes in word by word.
+  look?: CapcutLook;
 };
 
-// How many photos one segment shows: two for the split screen and picture in picture, else one.
-export function photosPerSegment(tpl: Pick<ReelTemplate, "frame">): number {
-  return tpl.frame === "split" || tpl.frame === "pip" ? 2 : 1;
+// How many photos one segment shows: two for the split screen, the main photo and its framed ones
+// for picture in picture, else one.
+export function photosPerSegment(tpl: Pick<ReelTemplate, "frame" | "insets">): number {
+  if (tpl.frame === "pip") return 1 + (tpl.insets ?? 1);
+  return tpl.frame === "split" ? 2 : 1;
 }
 
 export const REEL_TEMPLATES: ReelTemplate[] = [
@@ -225,12 +233,27 @@ export const REEL_TEMPLATES: ReelTemplate[] = [
   {
     id: "pip",
     label: "תמונה בתוך תמונה",
-    description: "תמונה ראשית על כל המסך ותמונה קטנה במסגרת לבנה מעליה, ששתיהן זזות",
-    photoSeconds: 2.2,
+    description: "תמונה ראשית מאחור ותמונה במסגרת שעפה פנימה, זזה ויוצאת, בכל פעם בתנועה אחרת",
+    photoSeconds: 2.8,
     transitionSeconds: 0.5,
     transitions: ["fade", "slide", "zoom", "leak", "flip", "circle", "shake"],
     motion: "kenburns",
     frame: "pip",
+    letterbox: false,
+    grain: false,
+    textStyle: "serif",
+    accent: "#ffffff",
+  },
+  {
+    id: "pip-duo",
+    label: "שתי תמונות בתוך תמונה",
+    description: "תמונה ראשית מאחור ושתי תמונות במסגרת שנכנסות אחת אחרי השנייה, בתנועה תלת־ממדית",
+    photoSeconds: 3.4,
+    transitionSeconds: 0.6,
+    transitions: ["fade", "slide", "zoom", "leak", "blur", "circle"],
+    motion: "kenburns",
+    frame: "pip",
+    insets: 2,
     letterbox: false,
     grain: false,
     textStyle: "serif",
@@ -354,8 +377,8 @@ export const REEL_TEMPLATES: ReelTemplate[] = [
   {
     id: "beat-pip",
     label: "תמונה בתוך תמונה על הביט",
-    description: "תמונה ראשית ותמונה קטנה מעליה, חיתוך חד על הביט וזום חבטה בכל פעימה",
-    photoSeconds: 1.4,
+    description: "תמונה ראשית ותמונה במסגרת שנוחתת על הביט ויוצאת עד החיתוך, וזום חבטה בכל פעימה",
+    photoSeconds: 1.8,
     transitionSeconds: 0.22,
     transitions: ["cut", "slide", "zoomin", "whip"],
     motion: "punch",
@@ -364,10 +387,227 @@ export const REEL_TEMPLATES: ReelTemplate[] = [
     grain: false,
     textStyle: "bold",
     accent: "#ffffff",
-    beat: { pattern: [2, 2, 4], track: "celebration" },
+    beat: { pattern: [4, 2, 4, 4], track: "celebration" },
     fx: { cut: ["punch", "flash"], pulse: ["punch"] },
   },
+  // ---- CapCut style (owner, 2026-11-04: "a reel that looks like CapCut's templates, with special
+  // effects, not something basic"). Each one has a look of its own (capcut.ts): how the camera
+  // hits the beat, the colour, the light over the picture and how the text comes in. With a song
+  // whose tempo is known the cuts fall on its beats; without one, the rhythm of short, medium and
+  // long shots (rhythm.ts) still drives the hits. ----
+  {
+    id: "cc-velocity",
+    label: "וולוסיטי",
+    description: "זום חד שנוחת על הביט, תנועות שוט מטושטשות ורעידה, בגוון כחול־כתום",
+    photoSeconds: 1,
+    transitionSeconds: 0.2,
+    transitions: ["cut"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "bold",
+    accent: "#ffffff",
+    beat: { pattern: [2, 1, 1, 2, 2, 4], track: "energy" },
+    fx: { cut: [], accent: ["rgb"], accentEvery: 2 },
+    look: {
+      camera: { hit: "punch", hitScale: 0.2, hitLen: 0.45, ramp: 0.12, whip: "accent", whipLen: 0.15, shake: 0.028, pulse: 0.035 },
+      grade: { lift: "#06222c", gain: "#ffe0c2", contrast: 0.38, sat: 0.12 },
+      accentEvery: 2,
+      intro: "zoom",
+      kinetic: "slam",
+      bloom: 0.22,
+      vignette: 0.38,
+      flare: 0.55,
+    },
+  },
+  {
+    id: "cc-film",
+    label: "פילם וינטג'",
+    description: "גוון חם של פילם, אבק ושריטות, דליפות אור וצריבה שמכסה את החיתוך",
+    photoSeconds: 2.4,
+    transitionSeconds: 0.5,
+    transitions: ["cut", "fade", "leak"],
+    motion: "drift",
+    frame: "full",
+    letterbox: true,
+    grain: true,
+    textStyle: "cinema",
+    accent: "#f1e2c2",
+    beat: { pattern: [4, 4, 2, 2, 4], track: "cinematic" },
+    look: {
+      camera: { hit: "drop", hitScale: 0.07, hitLen: 0.9, push: 0.07, weave: 0.0035 },
+      grade: { lift: "#26160a", gain: "#ffe6c6", contrast: 0.42, soft: true, sat: -0.16 },
+      accentEvery: 2,
+      intro: "burn",
+      kinetic: "blurin",
+      vignette: 0.5,
+      leaks: { amount: 0.55, palette: "warm" },
+      burn: 4,
+      dust: 0.9,
+    },
+  },
+  {
+    id: "cc-glitch",
+    label: "גליץ' פופ",
+    description: "שחור־לבן שמתפוצץ לצבע על הביט, פיצול צבעים, פיקסלים וסטרובו",
+    photoSeconds: 0.9,
+    transitionSeconds: 0.18,
+    transitions: ["cut"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "modern",
+    accent: "#ffffff",
+    beat: { pattern: [1, 1, 2, 1, 1, 2, 2], track: "energy" },
+    fx: { cut: ["rgb"], accent: ["strobe"], accentEvery: 4 },
+    look: {
+      camera: { hit: "punch", hitScale: 0.12, hitLen: 0.3, rot: 3, shake: 0.02, pulse: 0.03 },
+      grade: { contrast: 0.45, sat: 0.22, gain: "#fff6ee" },
+      accentEvery: 4,
+      intro: "glitch",
+      kinetic: "track",
+      vignette: 0.3,
+      bwPop: true,
+      blocks: 1,
+      scan: 0.6,
+    },
+  },
+  {
+    id: "cc-split",
+    label: "פיצול על הביט",
+    description: "על כל ביט התמונה נכנסת בפסים ובמסכים מפוצלים, ומתאחדת למסך מלא",
+    photoSeconds: 1.2,
+    transitionSeconds: 0.2,
+    transitions: ["cut"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "modern",
+    accent: "#ffffff",
+    beat: { pattern: [2, 2, 4], track: "celebration" },
+    fx: { cut: [], accent: ["flash"], accentEvery: 4 },
+    look: {
+      camera: { hit: "punch", hitScale: 0.08, hitLen: 0.35, pulse: 0.03 },
+      grade: { contrast: 0.3, sat: 0.18 },
+      accentEvery: 4,
+      intro: "zoom",
+      kinetic: "pop",
+      vignette: 0.25,
+      panels: { every: 1, variants: ["strips", "grid", "halves", "triple"] },
+    },
+  },
+  {
+    id: "cc-dreamy",
+    label: "חלומי",
+    description: "זוהר רך, בוקה מרחף ודליפות אור בפסטל, זום איטי ומעברים רכים",
+    photoSeconds: 2.6,
+    transitionSeconds: 0.7,
+    transitions: ["fade", "softzoom", "glow", "blur"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "serif",
+    accent: "#ffffff",
+    beat: { pattern: [4, 4, 4, 2, 2], track: "lofi" },
+    look: {
+      camera: { hit: "drop", hitScale: 0.05, hitLen: 1.1, push: 0.1 },
+      grade: { lift: "#2a1c2c", gain: "#fff0f2", sat: -0.12, contrast: 0.12, soft: true },
+      accentEvery: 4,
+      intro: "white",
+      kinetic: "blurin",
+      bloom: 0.55,
+      vignette: 0.14,
+      leaks: { amount: 0.42, palette: "pastel" },
+      bokeh: { amount: 0.85, palette: "pastel" },
+    },
+  },
+  {
+    id: "cc-bounce",
+    label: "קפיצי",
+    description: "כל תמונה נוחתת בקפיצה אלסטית עם סיבוב קטן, ופעימה על כל ביט",
+    photoSeconds: 1,
+    transitionSeconds: 0.2,
+    transitions: ["cut"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "bold",
+    accent: "#ffffff",
+    beat: { pattern: [1, 1, 2, 1, 1, 2, 4], track: "celebration" },
+    look: {
+      camera: { hit: "bounce", hitScale: 0.22, hitLen: 0.75, base: 1.06, rot: 5, pulse: 0.05 },
+      grade: { contrast: 0.3, sat: 0.24, gain: "#fff8ef" },
+      accentEvery: 4,
+      intro: "zoom",
+      kinetic: "pop",
+      bloom: 0.12,
+      vignette: 0.2,
+    },
+  },
+  {
+    id: "cc-neon",
+    label: "ניאון",
+    description: "גוון לילה כהה וזוהר צבעוני, הבזקי ורוד וטורקיז על הביט ופיצול צבעים",
+    photoSeconds: 1.2,
+    transitionSeconds: 0.2,
+    transitions: ["cut"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "modern",
+    accent: "#ffffff",
+    beat: { pattern: [2, 2, 1, 1, 2], track: "energy" },
+    fx: { cut: [], accent: ["rgb"], accentEvery: 2 },
+    look: {
+      camera: { hit: "punch", hitScale: 0.14, hitLen: 0.4, push: 0.05, shake: 0.02 },
+      grade: { gain: "#7c6cc0", contrast: 0.6, sat: 0.4, lift: "#08020f" },
+      accentEvery: 2,
+      intro: "black",
+      kinetic: "track",
+      textGlow: "#ff4fd8",
+      bloom: 0.6,
+      vignette: 0.55,
+      leaks: { amount: 0.3, palette: "neon" },
+      colorFlash: ["#ff2bd6", "#19e3ff"],
+      rim: ["#ff2bd6", "#19d8ff"],
+    },
+  },
+  {
+    id: "cc-trailer",
+    label: "טריילר",
+    description: "פסים שחורים, זום איטי פנימה, חיתוך לשחור עם בום על השיא וכותרת ענקית",
+    photoSeconds: 2.4,
+    transitionSeconds: 0.4,
+    transitions: ["cut"],
+    motion: "drift",
+    frame: "full",
+    letterbox: true,
+    grain: true,
+    textStyle: "cinema",
+    accent: "#ffffff",
+    beat: { pattern: [4, 4, 2, 2, 4], track: "cinematic" },
+    look: {
+      camera: { hit: "drop", hitOn: "accent", hitScale: 0.12, hitLen: 0.7, push: 0.12, shake: 0.035 },
+      grade: { lift: "#04101e", gain: "#d9e6ff", contrast: 0.42, sat: -0.08 },
+      accentEvery: 4,
+      intro: "black",
+      kinetic: "slam",
+      titleScale: 1.6,
+      vignette: 0.5,
+      flare: 0.75,
+      blackDip: true,
+    },
+  },
 ];
+
+// The template a new reel opens with (owner, 2026-11-04: CapCut-style, not something basic).
+export const DEFAULT_REEL_TEMPLATE_ID = "cc-velocity";
 
 export type ReelTextPosition = "top" | "center" | "bottom";
 

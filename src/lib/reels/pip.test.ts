@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { pipInsetRect } from "@/lib/reels/scene";
 import { photosPerSegment, templateById, REEL_TEMPLATES, type ReelSettings } from "@/lib/reels/templates";
 import { cutBasis, recommendedPhotos, recutReason, reelTimeline, segmentCount } from "@/lib/reels/render";
 
@@ -19,59 +18,30 @@ const settings = (over: Partial<ReelSettings> = {}): ReelSettings => ({
 });
 
 describe("picture in picture", () => {
-  it("has a regular and an on-the-beat template, two photos a segment", () => {
+  it("has a regular, a two-layer and an on-the-beat template", () => {
     expect(templateById("pip").frame).toBe("pip");
+    expect(templateById("pip-duo").frame).toBe("pip");
     expect(templateById("beat-pip").beat).toBeTruthy();
     expect(photosPerSegment(templateById("pip"))).toBe(2);
+    expect(photosPerSegment(templateById("beat-pip"))).toBe(2);
+    expect(photosPerSegment(templateById("pip-duo"))).toBe(3);
     expect(photosPerSegment(templateById("split"))).toBe(2);
     expect(photosPerSegment(templateById("soft"))).toBe(1);
-    expect(REEL_TEMPLATES.filter((t) => t.frame === "pip")).toHaveLength(2);
+    expect(REEL_TEMPLATES.filter((t) => t.frame === "pip")).toHaveLength(3);
   });
 
-  it("counts segments, recommended photos and dropped photos in pairs", () => {
+  it("counts segments, recommended photos and dropped photos by the segment's photos", () => {
     const tpl = templateById("pip");
     expect(segmentCount(9, tpl)).toBe(5);
     expect(recommendedPhotos(15, tpl, settings()) % 2).toBe(0);
     const tl = reelTimeline(40, tpl, settings({ length: 5 }));
     expect(tl.dropped).toBe(40 - tl.segments * 2);
-  });
-
-  it("keeps the small photo inside the screen, away from the very top and bottom, in every corner and moment", () => {
-    for (const [W, H] of [
-      [1080, 1920],
-      [1080, 1350],
-      [1080, 1080],
-    ]) {
-      for (const aspect of [0.5, 0.75, 1, 1.5, 2.2]) {
-        for (let k = 0; k < 8; k++) {
-          for (const p of [0, 0.25, 0.5, 0.75, 1]) {
-            const r = pipInsetRect(W, H, aspect, k, p);
-            // The rotated frame's bounding box, with its white border.
-            const border = Math.min(W, H) * 0.012;
-            const w = (r.w + 2 * border) * r.scale;
-            const h = (r.h + 2 * border) * r.scale;
-            const bw = Math.abs(w * Math.cos(r.turn)) + Math.abs(h * Math.sin(r.turn));
-            const bh = Math.abs(w * Math.sin(r.turn)) + Math.abs(h * Math.cos(r.turn));
-            expect(r.cx - bw / 2).toBeGreaterThan(0);
-            expect(r.cx + bw / 2).toBeLessThan(W);
-            expect(r.cy - bh / 2).toBeGreaterThan(H * 0.05);
-            expect(r.cy + bh / 2).toBeLessThan(H * 0.95);
-            // Small: under 40% of the screen.
-            expect((r.w * r.h) / (W * H)).toBeLessThan(0.4);
-          }
-        }
-      }
-    }
-  });
-
-  it("moves: the small photo drifts and turns through its segment, and takes another corner in the next", () => {
-    const a = pipInsetRect(1080, 1920, 1.5, 0, 0);
-    const b = pipInsetRect(1080, 1920, 1.5, 0, 1);
-    expect(Math.hypot(a.cx - b.cx, a.cy - b.cy)).toBeGreaterThan(30);
-    expect(a.turn).not.toBeCloseTo(b.turn, 3);
-    const next = pipInsetRect(1080, 1920, 1.5, 1, 0);
-    expect(Math.sign(next.cx - 540)).not.toBe(Math.sign(a.cx - 540));
-    expect(Math.sign(next.cy - 960)).not.toBe(Math.sign(a.cy - 960));
+    const duo = templateById("pip-duo");
+    expect(segmentCount(9, duo)).toBe(3);
+    expect(segmentCount(10, duo)).toBe(4);
+    expect(recommendedPhotos(15, duo, settings({ templateId: "pip-duo" })) % 3).toBe(0);
+    const tl3 = reelTimeline(40, duo, settings({ templateId: "pip-duo", length: 5 }));
+    expect(tl3.dropped).toBe(40 - tl3.segments * 3);
   });
 });
 

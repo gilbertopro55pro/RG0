@@ -95,6 +95,19 @@ const QUALITY: Record<FxQuality, { maxErr: number; maxStrips: number; smoothing:
 
 type Ctx2D = CanvasRenderingContext2D;
 
+// The 2D transform everything is drawn under: null for the canvas itself (the slideshow), or the
+// transform the caller's canvas already has (the reels draw these planes inside a transition that
+// slides, zooms or shakes the whole picture, see reels/scene.ts).
+export type BaseTransform = { a: number; b: number; c: number; d: number; e: number; f: number } | null;
+
+function setT(ctx: Ctx2D, base: BaseTransform, a: number, b: number, c: number, d: number, e: number, f: number) {
+  if (!base) {
+    ctx.setTransform(a, b, c, d, e, f);
+    return;
+  }
+  ctx.setTransform(base.a * a + base.c * b, base.b * a + base.d * b, base.a * c + base.c * d, base.b * c + base.d * d, base.a * e + base.c * f + base.e, base.b * e + base.d * f + base.f);
+}
+
 // Light from the upper left, in front: a photo turned toward it brightens a little, one turned
 // away darkens, as on a real card.
 const LIGHT = (() => {
@@ -150,7 +163,7 @@ function getShadowSprite(): HTMLCanvasElement | null {
   return c;
 }
 
-function drawShadow(ctx: Ctx2D, cam: Camera, g: PlaneGeom, strength: number) {
+function drawShadow(ctx: Ctx2D, cam: Camera, g: PlaneGeom, strength: number, base: BaseTransform = null, baseAlpha = 1) {
   // Only under a photo that faces the viewer: the shadow is the photo's box, which would show
   // around a photo turned on its side.
   const { facing } = planeLight(g);
@@ -173,14 +186,14 @@ function drawShadow(ctx: Ctx2D, cam: Camera, g: PlaneGeom, strength: number) {
   const sx = (w + 2 * spread) / (SPRITE - 2 * SPRITE_INSET);
   const sy = (h + 2 * spread) / (SPRITE - 2 * SPRITE_INSET);
   const drop = cam.H * 0.012;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalAlpha = Math.min(1, k * 0.8);
+  setT(ctx, base, 1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = baseAlpha * Math.min(1, k * 0.8);
   // A blur needs no fine filtering, and the finer ones cost several times more for a big stretch.
   const quality = ctx.imageSmoothingQuality;
   ctx.imageSmoothingQuality = "low";
   ctx.drawImage(sprite, x0 - spread - SPRITE_INSET * sx, y0 - spread - SPRITE_INSET * sy + drop, SPRITE * sx, SPRITE * sy);
   ctx.imageSmoothingQuality = quality;
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = baseAlpha;
 }
 
 function quadPath(ctx: Ctx2D, s: PlaneSlices) {
@@ -194,12 +207,12 @@ function quadPath(ctx: Ctx2D, s: PlaneSlices) {
 }
 
 // The photo (or piece) itself, its strips and its shading, at full opacity.
-function drawPlaneBody(ctx: Ctx2D, cam: Camera, op: Extract<PlaneOp, { kind: "plane" }>, s: PlaneSlices) {
+function drawPlaneBody(ctx: Ctx2D, cam: Camera, op: Extract<PlaneOp, { kind: "plane" }>, s: PlaneSlices, base: BaseTransform = null) {
   const [sx, sy, sw, sh] = op.src;
   const img = op.img;
   ctx.save();
   if (s.sliced) {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    setT(ctx, base, 1, 0, 0, 1, 0, 0);
     quadPath(ctx, s);
     ctx.clip();
   }
@@ -208,7 +221,7 @@ function drawPlaneBody(ctx: Ctx2D, cam: Camera, op: Extract<PlaneOp, { kind: "pl
     const ly = Math.hypot(st.ay[0], st.ay[1]);
     const bs = s.sliced ? st.padS : op.bleed / lx;
     const bt = s.sliced ? st.padT : op.bleed / ly;
-    ctx.setTransform(st.ax[0], st.ax[1], st.ay[0], st.ay[1], st.o[0], st.o[1]);
+    setT(ctx, base, st.ax[0], st.ax[1], st.ay[0], st.ay[1], st.o[0], st.o[1]);
     let x = sx;
     let y = sy;
     let w = sw;
@@ -235,7 +248,7 @@ function drawPlaneBody(ctx: Ctx2D, cam: Camera, op: Extract<PlaneOp, { kind: "pl
   const shadeAt = (z: number) => 1 - (1 - light.dark) * (1 - fog(cam, z)) * (1 - op.dim);
   const a0 = shadeAt(z0);
   const a1 = shadeAt(z1);
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  setT(ctx, base, 1, 0, 0, 1, 0, 0);
   // Below 2% the shading can't be seen; skipping it saves a fill over the whole photo per frame.
   if (Math.max(a0, a1) > 0.02) {
     quadPath(ctx, s);
@@ -283,29 +296,31 @@ function layerFor(canvas: object, W: number, H: number): HTMLCanvasElement | nul
   return layer;
 }
 
-function drawOp(ctx: Ctx2D, cam: Camera, op: PlaneOp, quality: FxQuality) {
+// One plane (or shadow) of a frame. `base` and `baseAlpha`: the transform and opacity the caller's
+// canvas is already drawing with (the reels' transitions), which everything here is drawn under.
+export function drawPlaneOp(ctx: Ctx2D, cam: Camera, op: PlaneOp, quality: FxQuality, base: BaseTransform = null, baseAlpha = 1) {
   if (op.kind === "shadow") {
-    drawShadow(ctx, cam, op.g, op.shadow);
+    drawShadow(ctx, cam, op.g, op.shadow, base, baseAlpha);
     return;
   }
   if (op.alpha <= 0.002) return;
   const q = QUALITY[quality];
   const s = planeStrips(cam, op.g, { maxErr: q.maxErr, maxStrips: q.maxStrips });
   if (!s) return;
-  if (op.shadow > 0.005) drawShadow(ctx, cam, op.g, op.shadow * op.alpha);
+  if (op.shadow > 0.005) drawShadow(ctx, cam, op.g, op.shadow * op.alpha, base, baseAlpha);
   const alpha = Math.min(1, op.alpha);
   if (alpha >= 0.995 || !s.sliced) {
-    ctx.globalAlpha = alpha;
-    drawPlaneBody(ctx, cam, op, s);
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = baseAlpha * alpha;
+    drawPlaneBody(ctx, cam, op, s, base);
+    ctx.globalAlpha = baseAlpha;
     return;
   }
   const layer = layerFor(ctx.canvas, cam.W, cam.H);
   const lctx = layer?.getContext("2d");
   if (!layer || !lctx) {
-    ctx.globalAlpha = alpha;
-    drawPlaneBody(ctx, cam, op, s);
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = baseAlpha * alpha;
+    drawPlaneBody(ctx, cam, op, s, base);
+    ctx.globalAlpha = baseAlpha;
     return;
   }
   const xs = [s.quad.tl[0], s.quad.tr[0], s.quad.br[0], s.quad.bl[0]];
@@ -320,10 +335,10 @@ function drawOp(ctx: Ctx2D, cam: Camera, op: PlaneOp, quality: FxQuality) {
   lctx.imageSmoothingEnabled = true;
   lctx.imageSmoothingQuality = q.smoothing;
   drawPlaneBody(lctx, cam, op, s);
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalAlpha = alpha;
+  setT(ctx, base, 1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = baseAlpha * alpha;
   ctx.drawImage(layer, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = baseAlpha;
 }
 
 // The background: the photo blurred (its small copy stretched), covering the canvas.
@@ -367,6 +382,6 @@ export function drawShowFrame(ctx: Ctx2D, W: number, H: number, frame: FxFrame, 
   vignette.addColorStop(1, "rgba(0,0,0,0.6)");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, W, H);
-  for (const op of scene.ops) drawOp(ctx, cam, op, quality);
+  for (const op of scene.ops) drawPlaneOp(ctx, cam, op, quality);
   ctx.restore();
 }
