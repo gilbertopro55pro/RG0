@@ -36,6 +36,7 @@ import ReelTimelineEditor, { type TimelineClip } from "@/components/ReelTimeline
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES } from "@/lib/albumFonts";
 import { exportReelMp4, ReelCancelledError, ReelUnsupportedError } from "@/lib/reels/encode";
 import { FIT_MIN_VISIBLE } from "@/lib/reels/scene";
+import { PIP_CARD_ASPECT } from "@/lib/reels/proshow";
 import { useBusy } from "@/lib/updateResume";
 
 // Reels from a gallery (owner, 2026-10-07, admin only while it's polished): pick photos, a
@@ -759,9 +760,14 @@ export default function ReelBuilder({
     if (at !== null) seek(at + 0.01);
   };
   // Which way a clip is cut to fit the reel's shape ("x": its sides, "y": top and bottom), or null
-  // when it's shown whole (the same rule as drawPhoto in scene.ts).
-  const clipCropAxis = (el: HTMLVideoElement, fit: ReelFit): "x" | "y" | null => {
+  // when it's shown whole (the same rule as drawPhoto in scene.ts). In picture in picture, a clip
+  // after a segment's first is in a frame of its own shape, cut only past its limits (proshow.ts).
+  const clipCropAxis = (id: string, el: HTMLVideoElement, fit: ReelFit): "x" | "y" | null => {
     if (tpl.frame === "framed" || !el.videoWidth || !el.videoHeight) return null;
+    if (tpl.frame === "pip" && readyIds.indexOf(id) % perSeg > 0) {
+      const a = el.videoWidth / el.videoHeight;
+      return a > PIP_CARD_ASPECT[1] ? "x" : a < PIP_CARD_ASPECT[0] ? "y" : null;
+    }
     const rw = platform.width;
     const rh = tpl.frame === "split" ? platform.height / 2 : platform.height;
     const cover = Math.max(rw / el.videoWidth, rh / el.videoHeight);
@@ -1199,7 +1205,7 @@ export default function ReelBuilder({
                     options={clipOpts.get(editingClip) ?? CLIP_DEFAULTS}
                     reelFit={settings.fit}
                     framed={tpl.frame === "framed"}
-                    cropAxis={clipCropAxis(videos.get(editingClip)!.el, clipOpts.get(editingClip)?.fit ?? settings.fit)}
+                    cropAxis={clipCropAxis(editingClip, videos.get(editingClip)!.el, clipOpts.get(editingClip)?.fit ?? settings.fit)}
                     onChange={(patch) => setClip(editingClip, patch)}
                     onDone={() => setEditingClip(null)}
                   />

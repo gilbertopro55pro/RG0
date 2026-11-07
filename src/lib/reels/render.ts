@@ -1,5 +1,6 @@
 import { REEL_TRANSITIONS, photosPerSegment, transitionInfo, type ReelLineStyle, type ReelSettings, type ReelTemplate, type ReelTransition } from "./templates";
 import { clamp01, drawGrain, drawSegment, easeOut, type ReelImage, type Scene } from "./scene";
+import type { SegTiming } from "./proshow";
 import { drawTransition } from "./transitions";
 import { applyFxPost, applyFxTransform, fxEvents, fxSpec } from "./beatFx";
 import { REEL_LENGTHS, type ReelLength } from "./templates";
@@ -277,6 +278,27 @@ function transitionLength(kind: ReelTransition, tl: ReelTimeline, k: number) {
   return Math.min(0.6 * Math.min(tl.durs[k], tl.durs[k + 1]), Math.max(tl.transition, transitionInfo(kind).min * tl.pace));
 }
 
+// When segment k is on, for picture in picture (proshow.ts): its layers move in seconds, are gone
+// by the cut out of it (or by the ending text), land on the music's beat, and stay clear of the
+// title while it's on. The segment is drawn from the start of the transition into it, as in
+// drawPictures.
+export function segmentTiming(tl: ReelTimeline, tpl: ReelTemplate, settings: ReelSettings): (k: number) => SegTiming {
+  const pool = transitionPool(tpl, settings);
+  const lenAfter = (k: number) => (k >= 0 && k < tl.segments - 1 ? transitionLength(transitionAfter(k, pool, settings.seed), tl, k) : 0);
+  const { text } = settings;
+  const hasTitle = text.show && !!(text.title.trim() || text.subtitle.trim());
+  // The title's time on screen, as drawReelFrame shows it.
+  const titleEnd = Math.min(tl.total - tl.tail, Math.max(1.8, Math.min(3.2, tl.durs[0] + (tl.durs[1] ?? 0) * 0.6)));
+  const grid = tl.unit ?? tl.beat;
+  return (k) => {
+    const lead = lenAfter(k - 1);
+    const from = tl.starts[k] - lead;
+    const to = k === tl.segments - 1 ? tl.total : tl.starts[k] + tl.durs[k];
+    const end = tl.tail > 0 && k === tl.segments - 1 ? Math.min(to, tl.total - tl.tail) : to;
+    return { life: Math.max(0.05, to - from), lead, end: Math.max(0.1, end - from), grid, gridAt: tl.phase - from, title: hasTitle && from < titleEnd && to > 0.25 };
+  };
+}
+
 const HEBREW = /[֐-׿]/;
 
 // Lines of `text` no wider than maxW at the current font.
@@ -443,7 +465,7 @@ export function drawReelFrame(
     return;
   }
   t = Math.max(0, Math.min(t, tl.total));
-  const sc: Scene = { W, H, tpl, settings, images };
+  const sc: Scene = { W, H, tpl, settings, images, timing: tpl.frame === "pip" ? segmentTiming(tl, tpl, settings) : undefined };
   // The on-beat effects: the zoom punch and shake move the picture as it's drawn, the rest pass
   // over it (beatFx.ts).
   const fx = fxEvents(t, tl, fxSpec(tpl, settings));

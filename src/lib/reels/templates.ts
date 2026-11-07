@@ -118,8 +118,8 @@ export const REEL_BEAT_FX: { id: ReelBeatFx; label: string }[] = [
 export type ReelFxSpec = { cut: ReelBeatFx[]; pulse?: ReelBeatFx[]; accent?: ReelBeatFx[]; accentEvery?: number };
 
 export type ReelMotion = "kenburns" | "punch" | "pan" | "drift";
-// "pip" (owner, 2026-11-04): picture in picture, a main photo on the whole screen and a small one
-// over it, both moving (scene.ts, drawPip).
+// "pip" (owner, 2026-11-04): picture in picture like ProShow's, a main photo on the whole screen and
+// one or two framed photos flying in and out over it as layers (proshow.ts, scene.ts drawPip).
 export type ReelFrame = "full" | "framed" | "split" | "pip";
 export type ReelTextStyle = "serif" | "bold" | "cinema" | "magazine" | "modern";
 
@@ -144,11 +144,15 @@ export type ReelTemplate = {
   // the template is made for (picked with it when the reel has no music yet).
   beat?: { pattern: number[]; track: string };
   fx?: ReelFxSpec;
+  // Picture in picture: how many framed photos over the main one (1 by default, or 2).
+  insets?: 1 | 2;
 };
 
-// How many photos one segment shows: two for the split screen and picture in picture, else one.
-export function photosPerSegment(tpl: Pick<ReelTemplate, "frame">): number {
-  return tpl.frame === "split" || tpl.frame === "pip" ? 2 : 1;
+// How many photos one segment shows: two for the split screen, the main photo and its framed ones
+// for picture in picture, else one.
+export function photosPerSegment(tpl: Pick<ReelTemplate, "frame" | "insets">): number {
+  if (tpl.frame === "pip") return 1 + (tpl.insets ?? 1);
+  return tpl.frame === "split" ? 2 : 1;
 }
 
 export const REEL_TEMPLATES: ReelTemplate[] = [
@@ -225,12 +229,27 @@ export const REEL_TEMPLATES: ReelTemplate[] = [
   {
     id: "pip",
     label: "תמונה בתוך תמונה",
-    description: "תמונה ראשית על כל המסך ותמונה קטנה במסגרת לבנה מעליה, ששתיהן זזות",
-    photoSeconds: 2.2,
+    description: "תמונה ראשית מאחור ותמונה במסגרת שעפה פנימה, זזה ויוצאת, בכל פעם בתנועה אחרת",
+    photoSeconds: 2.8,
     transitionSeconds: 0.5,
     transitions: ["fade", "slide", "zoom", "leak", "flip", "circle", "shake"],
     motion: "kenburns",
     frame: "pip",
+    letterbox: false,
+    grain: false,
+    textStyle: "serif",
+    accent: "#ffffff",
+  },
+  {
+    id: "pip-duo",
+    label: "שתי תמונות בתוך תמונה",
+    description: "תמונה ראשית מאחור ושתי תמונות במסגרת שנכנסות אחת אחרי השנייה, בתנועה תלת־ממדית",
+    photoSeconds: 3.4,
+    transitionSeconds: 0.6,
+    transitions: ["fade", "slide", "zoom", "leak", "blur", "circle"],
+    motion: "kenburns",
+    frame: "pip",
+    insets: 2,
     letterbox: false,
     grain: false,
     textStyle: "serif",
@@ -354,8 +373,8 @@ export const REEL_TEMPLATES: ReelTemplate[] = [
   {
     id: "beat-pip",
     label: "תמונה בתוך תמונה על הביט",
-    description: "תמונה ראשית ותמונה קטנה מעליה, חיתוך חד על הביט וזום חבטה בכל פעימה",
-    photoSeconds: 1.4,
+    description: "תמונה ראשית ותמונה במסגרת שנוחתת על הביט ויוצאת עד החיתוך, וזום חבטה בכל פעימה",
+    photoSeconds: 1.8,
     transitionSeconds: 0.22,
     transitions: ["cut", "slide", "zoomin", "whip"],
     motion: "punch",
@@ -364,7 +383,7 @@ export const REEL_TEMPLATES: ReelTemplate[] = [
     grain: false,
     textStyle: "bold",
     accent: "#ffffff",
-    beat: { pattern: [2, 2, 4], track: "celebration" },
+    beat: { pattern: [4, 2, 4, 4], track: "celebration" },
     fx: { cut: ["punch", "flash"], pulse: ["punch"] },
   },
 ];

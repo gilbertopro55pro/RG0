@@ -1,4 +1,7 @@
 import type { ReelFit, ReelSettings, ReelTemplate } from "./templates";
+import { DEFAULT_TIMING, pipPlan, poseTransform, type PipCard, type PipPose, type SegTiming } from "./proshow";
+import { cameraFor, compose, planeQuad, translate, type Camera, type PlaneGeom } from "../slideshow3d/math3d";
+import { drawPlaneOp } from "../slideshow3d/render";
 
 // The pieces every frame is drawn from: a photo in a rectangle (moved by the template's motion),
 // one "segment" (a photo, a framed photo, or two stacked), and the helpers transitions share.
@@ -20,7 +23,9 @@ export type ReelImage = {
   fit?: ReelFit;
 };
 
-export type Scene = { W: number; H: number; tpl: ReelTemplate; settings: ReelSettings; images: ReelImage[] };
+// `timing`: when each segment is on (render.ts, segmentTiming), for picture in picture, whose
+// layers move in seconds and land on the beat; without it they move by the segment's progress.
+export type Scene = { W: number; H: number; tpl: ReelTemplate; settings: ReelSettings; images: ReelImage[]; timing?: (k: number) => SegTiming };
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -212,61 +217,228 @@ function drawScale(ctx: CanvasRenderingContext2D) {
   return Math.max(0.05, Math.hypot(m.a, m.b));
 }
 
-// Picture in picture (owner, 2026-11-04: "a main photo and a small one, both moving"): the
-// segment's first photo on the whole screen, moving with the template's motion, and its second one
-// small, in a white frame with a shadow, drifting slowly toward the middle and turning a little,
-// with its own slow zoom inside. The small one takes another corner in every segment, never at the
-// very top or bottom edge (where the apps put their buttons and captions). With one photo in the
-// reel, the main photo alone.
-export function pipInsetRect(W: number, H: number, aspect: number, k: number, p: number) {
-  const short = Math.min(W, H);
-  const a = Math.max(0.68, Math.min(1.5, aspect));
-  let w = short * (a >= 1 ? 0.52 : 0.42);
-  let h = w / a;
-  if (h > H * 0.34) {
-    h = H * 0.34;
-    w = h * a;
+// Picture in picture like ProShow's (owner, 2026-11-04, proshow.ts plans it): the segment's first
+// photo on the whole screen, still moving with the template's motion and a little darker, and one
+// or two photos in white frames as layers over it, each flying in, moving and going out on its own
+// path (from a side, out of the distance, dropped from near the camera, turning like a door,
+// swinging, spinning), a moment apart. The layers are the slideshow's 3D planes (perspective strips,
+// its light and depth shading), with a soft shadow that follows the frame and, on some, a
+// reflection under it. With one photo in the reel, the main photo alone.
+const cardCache = new WeakMap<object, Map<string, ReelImage>>();
+const liveCards = new WeakMap<object, HTMLCanvasElement>();
+
+// The photo in its white frame (rounded corners on some styles), drawn once per photo and size; a
+// video clip's every frame.
+function cardImage(img: ReelImage, c: PipCard): ReelImage {
+  const res = Math.min(1.2, 1600 / Math.max(c.w, c.h));
+  const cw = Math.max(8, Math.round(c.w * res));
+  const ch = Math.max(8, Math.round(c.h * res));
+  const b = Math.max(1, Math.round(c.border * res));
+  const rad = Math.round(c.radius * res);
+  const focus = img.focus ?? 0.5;
+  const key = `${cw}x${ch}:${b}:${rad}:${focus.toFixed(3)}`;
+  let byKey = cardCache.get(img.el as object);
+  if (!img.live) {
+    const hit = byKey?.get(key);
+    if (hit) return hit;
   }
-  const margin = short * 0.07;
-  // Bottom-end, top-start, bottom-start, top-end, in turn.
-  const corner = ((k % 4) + 4) % 4;
-  const right = corner === 0 || corner === 3;
-  const bottom = corner === 0 || corner === 2;
-  const e = easeInOut(clamp01(p));
-  const drift = short * 0.05;
-  const cx = (right ? W - margin - w / 2 : margin + w / 2) + (right ? -1 : 1) * drift * e;
-  const cy = (bottom ? H - margin * 1.8 - h / 2 : margin * 1.8 + h / 2) + (bottom ? -1 : 1) * drift * 0.6 * e;
-  const turn = ((right ? 1 : -1) * (-3 + 5 * e) * Math.PI) / 180;
-  return { cx, cy, w, h, turn, scale: 0.97 + 0.05 * e };
+  let cv = img.live ? liveCards.get(img.el as object) : undefined;
+  if (!cv) {
+    cv = document.createElement("canvas");
+    if (img.live) liveCards.set(img.el as object, cv);
+  }
+  if (cv.width !== cw || cv.height !== ch) {
+    cv.width = cw;
+    cv.height = ch;
+  }
+  const g = cv.getContext("2d")!;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, cw, ch);
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  roundRectPath(g, 0, 0, cw, ch, rad);
+  g.fillStyle = "#ffffff";
+  g.fill();
+  const iw = cw - 2 * b;
+  const ih = ch - 2 * b;
+  g.save();
+  roundRectPath(g, b, b, iw, ih, Math.max(0, rad - b));
+  g.clip();
+  const s = Math.max(iw / img.width, ih / img.height);
+  const dw = img.width * s;
+  const dh = img.height * s;
+  g.drawImage(sizedFor(img, dw).el, b + (iw - dw) * focus, b + (ih - dh) * focus, dw, dh);
+  g.restore();
+  const out = { el: cv, width: cw, height: ch };
+  if (!img.live) {
+    if (!byKey) {
+      byKey = new Map();
+      cardCache.set(img.el as object, byKey);
+    }
+    // A few sizes per photo (the preview, the export, the thumbnails), the oldest dropped.
+    if (byKey.size >= 6) byKey.delete(byKey.keys().next().value as string);
+    byKey.set(key, out);
+  }
+  return out;
+}
+
+// The frame's lower part, mirrored and fading, for the reflection under it.
+const reflectionCache = new WeakMap<object, HTMLCanvasElement>();
+const REFLECTION = 0.42;
+function reflectionOf(card: ReelImage, live: boolean): HTMLCanvasElement {
+  let rc = reflectionCache.get(card.el as object);
+  const rw = card.width;
+  const rh = Math.max(2, Math.round(card.height * REFLECTION));
+  if (rc && !live && rc.width === rw && rc.height === rh) return rc;
+  if (!rc) {
+    rc = document.createElement("canvas");
+    reflectionCache.set(card.el as object, rc);
+  }
+  rc.width = rw;
+  rc.height = rh;
+  const g = rc.getContext("2d")!;
+  g.setTransform(1, 0, 0, -1, 0, card.height);
+  g.drawImage(card.el, 0, 0);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = "destination-in";
+  const fade = g.createLinearGradient(0, 0, 0, rh);
+  fade.addColorStop(0, "rgba(0,0,0,0.34)");
+  fade.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = fade;
+  g.fillRect(0, 0, rw, rh);
+  g.globalCompositeOperation = "source-over";
+  return rc;
+}
+
+// A soft shadow made once (built pixel by pixel, like the slideshow's: shadowBlur differs between
+// browsers and comes out as a hard slab without a GPU), tighter than the slideshow's, for a print.
+let cardShadow: HTMLCanvasElement | null = null;
+const SHADOW_SIZE = 128;
+const SHADOW_INSET = 18;
+function cardShadowSprite(): HTMLCanvasElement {
+  if (cardShadow) return cardShadow;
+  const c = document.createElement("canvas");
+  c.width = c.height = SHADOW_SIZE;
+  const g = c.getContext("2d")!;
+  const data = g.createImageData(SHADOW_SIZE, SHADOW_SIZE);
+  const lo = SHADOW_INSET;
+  const hi = SHADOW_SIZE - SHADOW_INSET;
+  for (let y = 0; y < SHADOW_SIZE; y++) {
+    for (let x = 0; x < SHADOW_SIZE; x++) {
+      const dx = Math.max(lo - (x + 0.5), 0, x + 0.5 - hi);
+      const dy = Math.max(lo - (y + 0.5), 0, y + 0.5 - hi);
+      data.data[(y * SHADOW_SIZE + x) * 4 + 3] = Math.round(255 * Math.exp(-((Math.hypot(dx, dy) / 7.5) ** 2)));
+    }
+  }
+  g.putImageData(data, 0, 0);
+  cardShadow = c;
+  return c;
+}
+
+type Base = { a: number; b: number; c: number; d: number; e: number; f: number };
+
+// Under the frame's outline as it's turned (not its box), dropped a little below it.
+function drawCardShadow(ctx: CanvasRenderingContext2D, cam: Camera, g: PlaneGeom, strength: number, base: Base, baseAlpha: number) {
+  if (strength <= 0.01) return;
+  const q = planeQuad(cam, g);
+  const cx = (q.tl[0] + q.tr[0] + q.br[0] + q.bl[0]) / 4;
+  const cy = (q.tl[1] + q.tr[1] + q.br[1] + q.bl[1]) / 4;
+  const grow = 1.03;
+  const at = (p: [number, number]): [number, number] => [cx + (p[0] - cx) * grow, cy + (p[1] - cy) * grow];
+  const tl = at(q.tl);
+  const tr = at(q.tr);
+  const bl = at(q.bl);
+  const inner = SHADOW_SIZE - 2 * SHADOW_INSET;
+  const ax: [number, number] = [(tr[0] - tl[0]) / inner, (tr[1] - tl[1]) / inner];
+  const ay: [number, number] = [(bl[0] - tl[0]) / inner, (bl[1] - tl[1]) / inner];
+  if (Math.abs(ax[0] * ay[1] - ax[1] * ay[0]) < 1e-4) return;
+  const drop = Math.hypot(bl[0] - tl[0], bl[1] - tl[1]) * 0.03 + cam.H * 0.004;
+  const ox = tl[0] - SHADOW_INSET * (ax[0] + ay[0]) + drop * 0.25;
+  const oy = tl[1] - SHADOW_INSET * (ax[1] + ay[1]) + drop;
+  ctx.setTransform(
+    base.a * ax[0] + base.c * ax[1],
+    base.b * ax[0] + base.d * ax[1],
+    base.a * ay[0] + base.c * ay[1],
+    base.b * ay[0] + base.d * ay[1],
+    base.a * ox + base.c * oy + base.e,
+    base.b * ox + base.d * oy + base.f,
+  );
+  ctx.globalAlpha = baseAlpha * Math.min(1, strength);
+  const quality = ctx.imageSmoothingQuality;
+  ctx.imageSmoothingQuality = "low";
+  ctx.drawImage(cardShadowSprite(), 0, 0);
+  ctx.imageSmoothingQuality = quality;
+  ctx.globalAlpha = baseAlpha;
+}
+
+function drawCard(ctx: CanvasRenderingContext2D, cam: Camera, img: ReelImage, c: PipCard, pose: PipPose, base: Base, baseAlpha: number) {
+  const T = poseTransform(pose);
+  const card = cardImage(img, c);
+  const fx = { el: card.el, w: card.width, h: card.height, bg: null };
+  if (c.reflection) {
+    const ref = reflectionOf(card, !!img.live);
+    const rh = c.h * REFLECTION;
+    const g = { T: compose(T, translate(0, c.h / 2 + c.h * 0.012 + rh / 2, 0)), w: c.w, h: rh };
+    drawPlaneOp(ctx, cam, { kind: "plane", img: { el: ref, w: ref.width, h: ref.height, bg: null }, g, src: [0, 0, ref.width, ref.height], alpha: pose.alpha, dim: 0, shadow: 0, bleed: 0 }, "video", base, baseAlpha);
+  }
+  const g = { T, w: c.w, h: c.h };
+  drawCardShadow(ctx, cam, g, pose.alpha * 0.6, base, baseAlpha);
+  drawPlaneOp(ctx, cam, { kind: "plane", img: fx, g, src: [0, 0, fx.w, fx.h], alpha: pose.alpha, dim: 0, shadow: 0, bleed: 0 }, "video", base, baseAlpha);
 }
 
 function drawPip(ctx: CanvasRenderingContext2D, sc: Scene, k: number, p: number) {
   const { W, H, tpl, images } = sc;
   const fit = sc.settings.fit;
   const blur = sc.settings.blur ?? 60;
-  const main = images[(2 * k) % images.length];
-  drawPhoto(ctx, main, { x: 0, y: 0, w: W, h: H }, p, tpl.motion, 2 * k, fit, blur);
-  if (images.length === 1) return;
-  const small = images[(2 * k + 1) % images.length];
-  // The title opens the reel at the bottom by default: the first small photo goes up top then, so
-  // it never covers the title.
-  const fromTop = sc.settings.text.show && sc.settings.text.position === "bottom" ? 1 : 0;
-  const r = pipInsetRect(W, H, small.width / small.height, k + fromTop, p);
-  const short = Math.min(W, H);
-  const border = Math.round(short * 0.012);
+  const insets = Math.max(1, Math.min(2, tpl.insets ?? 1));
+  const per = 1 + insets;
+  const seg = Array.from({ length: Math.min(per, images.length) }, (_, j) => images[(per * k + j) % images.length]);
+  const main = seg[0];
+  const full = { x: 0, y: 0, w: W, h: H };
+  if (seg.length < 2) {
+    drawPhoto(ctx, main, full, p, tpl.motion, per * k, fit, blur);
+    return;
+  }
+  const timing = sc.timing?.(k) ?? DEFAULT_TIMING;
+  const plan = pipPlan({
+    W,
+    H,
+    k,
+    seed: sc.settings.seed,
+    aspects: seg.map((im) => im.width / Math.max(1, im.height)),
+    insets: Math.min(insets, seg.length - 1),
+    timing,
+    title: timing.title && sc.settings.text.show ? sc.settings.text.position : null,
+  });
+  // The background keeps moving the whole time; darker, and darker toward the corners, so the
+  // layers stand out.
+  if (plan.background === "blurred") drawPhoto(ctx, blurredCopy(main, Math.max(55, blur)), full, p, "kenburns", per * k, "cover");
+  else drawPhoto(ctx, main, full, p, tpl.motion, per * k, fit, blur);
   ctx.save();
-  ctx.translate(r.cx, r.cy);
-  ctx.rotate(r.turn);
-  ctx.scale(r.scale, r.scale);
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.4)";
-  ctx.shadowBlur = short * 0.04;
-  ctx.shadowOffsetY = short * 0.012;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(-r.w / 2 - border, -r.h / 2 - border, r.w + 2 * border, r.h + 2 * border);
+  ctx.fillStyle = "rgba(0,0,0,0.14)";
+  ctx.fillRect(0, 0, W, H);
+  const vignette = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.56);
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.42)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, W, H);
   ctx.restore();
-  // Its own slow zoom, the other way from the main photo's.
-  drawPhoto(ctx, small, { x: -r.w / 2, y: -r.h / 2, w: r.w, h: r.h }, p, "kenburns", 2 * k + 1, "cover");
+  const u = clamp01(p) * timing.life;
+  const on = plan.cards.map((c) => ({ c, pose: c.pose(u) })).filter((x) => x.pose.alpha > 0.002);
+  if (!on.length) return;
+  const cam = cameraFor(W, H);
+  // Farther first, so nearer layers cover them. Close to the screen's plane they count as the same
+  // depth (the later one on top), so a print's little bounce on landing doesn't flip it under the
+  // one below it.
+  const depth = (z: number) => (Math.abs(z) < cam.P * 0.1 ? 0 : z);
+  on.sort((a, b) => depth(b.pose.z) - depth(a.pose.z));
+  const m = ctx.getTransform();
+  const base = { a: m.a, b: m.b, c: m.c, d: m.d, e: m.e, f: m.f };
+  const baseAlpha = ctx.globalAlpha;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  for (const { c, pose } of on) drawCard(ctx, cam, seg[c.image], c, pose, base, baseAlpha);
   ctx.restore();
 }
 
